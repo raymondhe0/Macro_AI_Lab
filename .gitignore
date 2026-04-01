@@ -1,0 +1,26 @@
+# Secrets — never commit
+.env
+
+# Runtime logs
+logs/
+
+# Generated reports
+reports/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# macOS
+.DS_Store
+
+# Claude Code session data
+.claude/
