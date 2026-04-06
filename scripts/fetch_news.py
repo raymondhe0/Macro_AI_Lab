@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Financial News Fetcher — fetch news by ticker/topic with optional date filtering.
+Financial News Fetcher — CLI wrapper around lib.search.
 
 Usage:
   python3 fetch_news.py "AAPL earnings"
@@ -10,47 +10,10 @@ Usage:
 """
 
 import argparse
-import os
 import json
 from datetime import datetime, date
-from pathlib import Path
 
-import requests
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).parent.parent / ".env")
-
-SERPER_API_KEY = os.environ["SERPER_API_KEY"]
-
-
-def build_tbs(start: date | None, end: date | None) -> str | None:
-    """Build Google tbs date-range string for Serper."""
-    if start and end:
-        return f"cdr:1,cd_min:{start.strftime('%-m/%-d/%Y')},cd_max:{end.strftime('%-m/%-d/%Y')}"
-    if start:
-        return f"cdr:1,cd_min:{start.strftime('%-m/%-d/%Y')},cd_max:{date.today().strftime('%-m/%-d/%Y')}"
-    if end:
-        return f"cdr:1,cd_min:1/1/2000,cd_max:{end.strftime('%-m/%-d/%Y')}"
-    return None
-
-
-def fetch_news(
-    query: str,
-    num: int = 10,
-    start: date | None = None,
-    end: date | None = None,
-) -> list[dict]:
-    url = "https://google.serper.dev/news"
-    headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
-    payload: dict = {"q": query, "num": num, "gl": "us", "hl": "en"}
-
-    tbs = build_tbs(start, end)
-    if tbs:
-        payload["tbs"] = tbs
-
-    resp = requests.post(url, headers=headers, json=payload, timeout=15)
-    resp.raise_for_status()
-    return resp.json().get("news", [])
+from lib.search import serper_search, build_tbs
 
 
 def parse_date(s: str) -> date:
@@ -67,7 +30,6 @@ def print_results(items: list[dict], query: str, start: date | None, end: date |
         date_range = f" [until {end}]"
 
     print(f'\n=== News: "{query}"{date_range} ({len(items)} results) ===\n')
-
     for i, item in enumerate(items, 1):
         print(f"[{i}] {item.get('title', 'N/A')}")
         print(f"     Source : {item.get('source', 'N/A')}")
@@ -81,15 +43,14 @@ def print_results(items: list[dict], query: str, start: date | None, end: date |
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch financial news with optional date filter")
-    parser.add_argument("query", help="Search query, e.g. 'AAPL earnings' or 'Fed rate decision'")
-    parser.add_argument("--date",  help="Single date (YYYY-MM-DD) — sets both start and end")
+    parser.add_argument("query")
+    parser.add_argument("--date",  help="Single date (YYYY-MM-DD)")
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end",   help="End date (YYYY-MM-DD)")
-    parser.add_argument("--num",   type=int, default=10, help="Max results (default: 10)")
-    parser.add_argument("--json",  action="store_true", help="Output raw JSON instead of formatted text")
+    parser.add_argument("--num",   type=int, default=10)
+    parser.add_argument("--json",  action="store_true")
     args = parser.parse_args()
 
-    # Resolve dates
     if args.date:
         start = end = parse_date(args.date)
     else:
@@ -99,7 +60,8 @@ def main() -> None:
     if start and end and start > end:
         parser.error("--start must be before --end")
 
-    items = fetch_news(args.query, num=args.num, start=start, end=end)
+    tbs   = build_tbs(start, end)
+    items = serper_search(args.query, num=args.num, tbs=tbs)
 
     if args.json:
         print(json.dumps(items, indent=2, ensure_ascii=False))

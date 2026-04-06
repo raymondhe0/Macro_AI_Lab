@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 class PromptLoader:
-    BASE = Path(__file__).parent.parent / "prompts"
+    BASE = Path(__file__).parent.parent.parent / "prompts"
 
     @staticmethod
     def load(category: str, name: str) -> str:

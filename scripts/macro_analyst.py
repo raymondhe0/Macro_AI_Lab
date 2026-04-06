@@ -1,49 +1,43 @@
 #!/usr/bin/env python3
 """
 Macro AI Lab — Daily Macro Strategy Report
-Fetches financial news via Serper.dev, reasons with local Qwen2.5 via Ollama,
-translates to Chinese, and delivers a styled HTML email.
 
 Usage:
-  python3 macro_analyst.py           # full run
-  python3 macro_analyst.py --test    # fast test: 1 query, no Ollama, sends [TEST] email
+  python3 macro_analyst.py           # full run (engine set by LLM_ENGINE in .env)
+  python3 macro_analyst.py --test    # fast test: 1 query, no LLM call, sends [TEST] email
 """
 
 import argparse
-import os
-import re
-import smtplib
 import logging
-import requests
-import markdown
-from datetime import datetime
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from pathlib import Path
-from dotenv import load_dotenv
-from prompt_loader import PromptLoader
+from datetime import date, datetime, timedelta
 
-# ── Config ────────────────────────────────────────────────────────────────────
+from lib.config import ACTIVE_MODEL, LLM_ENGINE
+from lib.search import serper_search, fetch_article_text, last_24h_tbs, last_nhours_tbs
+from lib.sources import is_trusted_source
+from lib.finnhub_client import fetch_earnings_calendar, format_earnings_calendar, fetch_general_news
+from lib.market_data import fetch_macro_prices
+from lib.rates_data import fetch_rates_data
+from lib.llm import run_llm
+from lib.email_report import render_html, send_email
+from lib.report_store import save_report, load_previous_report
+from lib.prompt_loader import PromptLoader
 
-load_dotenv(Path(__file__).parent.parent / ".env")
-
-SERPER_API_KEY   = os.environ["SERPER_API_KEY"]
-OLLAMA_HOST      = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL     = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
-SMTP_HOST        = os.environ["SMTP_HOST"]
-SMTP_PORT        = int(os.getenv("SMTP_PORT", 587))
-SMTP_USER        = os.environ["SMTP_USER"]
-SMTP_PASSWORD    = os.environ["SMTP_PASSWORD"]
-REPORT_RECIPIENT = os.environ["REPORT_RECIPIENT"]
+# ── Queries ───────────────────────────────────────────────────────────────────
 
 SEARCH_QUERIES = [
-    "site:cnbc.com US Treasury yield Fed interest rate",
-    "site:reuters.com financial markets economy today",
-    "site:marketwatch.com macroeconomic news today",
-    "site:investing.com macroeconomic news markets today",
-    "Fed Federal Reserve interest rate decision latest",
-    "CPI inflation NFP jobs data latest 2026",
-    "S&P 500 Nasdaq market outlook geopolitical risk",
+    # Critical (9–10): Fed + major data prints
+    "Federal Reserve FOMC (Federal Open Market Committee) interest rate decision inflation outlook",
+    "CPI (Consumer Price Index) inflation NFP (Non-Farm Payrolls) nonfarm payrolls economic data latest",
+
+    # High (7–8): PMI, trade/tariffs, OPEC+, other CBs
+    "PMI (Purchasing Managers Index) manufacturing services miss beat",
+    "tariff trade policy US China fiscal spending announcement",
+    "OPEC (Organization of the Petroleum Exporting Countries) oil supply cut energy prices geopolitical risk",
+    "ECB (European Central Bank) BOJ (Bank of Japan) central bank rate decision hawkish dovish surprise",
+
+    # Inter-market signals — two focused queries
+    "VIX (Volatility Index) credit spreads high yield bond market risk sentiment",
+    "DXY (US Dollar Index) 10-year Treasury yield gold price WTI crude oil",
 ]
 
 logging.basicConfig(
@@ -53,41 +47,29 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ── Serper Search ─────────────────────────────────────────────────────────────
-
-def serper_search(query: str, num: int = 5) -> list[dict]:
-    url = "https://google.serper.dev/news"
-    headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
-    payload = {"q": query, "num": num, "gl": "us", "hl": "en"}
-    resp = requests.post(url, headers=headers, json=payload, timeout=15)
-    resp.raise_for_status()
-    return resp.json().get("news", [])
-
-
-def fetch_article_text(url: str, max_chars: int = 3000) -> str:
-    try:
-        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        r.raise_for_status()
-        text = re.sub(r"<[^>]+>", " ", r.text)
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:max_chars]
-    except Exception as exc:
-        log.warning("Could not fetch %s — %s", url, exc)
-        return ""
-
+# ── News gathering ────────────────────────────────────────────────────────────
 
 def gather_news(test_mode: bool = False) -> list[dict]:
-    queries = SEARCH_QUERIES[:1] if test_mode else SEARCH_QUERIES
-    max_full = 0 if test_mode else 4
+    queries  = SEARCH_QUERIES[:1] if test_mode else SEARCH_QUERIES
+    max_full = 0 if test_mode else 6
+    num      = 5 if test_mode else 10
+    tbs      = last_nhours_tbs(48) if test_mode else last_24h_tbs()
 
     seen_urls: set[str] = set()
-    results: list[dict] = []
+    results:   list[dict] = []
     full_fetched = 0
+    dropped = 0
+
+    for item in ([] if test_mode else fetch_general_news()):
+        url = item.get("link", "")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            results.append(item)
 
     for query in queries:
         log.info("Searching: %s", query)
         try:
-            items = serper_search(query)
+            items = serper_search(query, num=num, tbs=tbs)
         except Exception as exc:
             log.error("Search failed for '%s': %s", query, exc)
             continue
@@ -98,6 +80,11 @@ def gather_news(test_mode: bool = False) -> list[dict]:
                 continue
             seen_urls.add(url)
 
+            if not is_trusted_source(item.get("source", ""), macro=True):
+                dropped += 1
+                log.debug("Dropped (untrusted): [%s] %s", item.get("source", ""), item.get("title", ""))
+                continue
+
             if full_fetched < max_full and url:
                 log.info("  Fetching full article: %s", url)
                 item["full_text"] = fetch_article_text(url)
@@ -106,18 +93,36 @@ def gather_news(test_mode: bool = False) -> list[dict]:
 
             results.append(item)
 
-    log.info("Collected %d unique news items (%d with full text)", len(results), full_fetched)
+    if dropped:
+        log.info("Source filter dropped %d items (untrusted sources)", dropped)
+    log.info("Collected %d news items (%d with full text)", len(results), full_fetched)
     return results
 
 
-# ── Ollama Inference ──────────────────────────────────────────────────────────
+# ── Prompt builder ────────────────────────────────────────────────────────────
 
-def build_user_message(news_items: list[dict]) -> str:
+def build_user_message(
+    news_items:   list[dict],
+    prices_md:    str,
+    rates_md:     str,
+    earnings_md:  str,
+    prev_report:  str | None,
+) -> str:
     today = datetime.now().strftime("%A, %B %d, %Y")
-    lines = [f"Today is {today}. Below are the latest financial news items retrieved:\n"]
+    lines = [f"Today is {today}. Below are the latest macro inputs:\n"]
 
+    lines += ["=" * 60, "SECTION A — LIVE MARKET PRICES (Finnhub ETF proxies, real-time)", "=" * 60,
+              prices_md, ""]
+
+    lines += ["=" * 60, "SECTION A2 — YIELD CURVE & FED FUNDS RATE (FRED, previous close)", "=" * 60,
+              rates_md, ""]
+
+    lines += ["=" * 60, "SECTION B — MAJOR EARNINGS THIS WEEK (Finnhub)", "=" * 60,
+              earnings_md, ""]
+
+    lines += ["=" * 60, "SECTION C — NEWS & MARKET CONTEXT", "=" * 60]
     for i, item in enumerate(news_items, 1):
-        lines.append(f"--- Article {i} ---")
+        lines.append(f"\n--- Article {i} ---")
         lines.append(f"Title   : {item.get('title', 'N/A')}")
         lines.append(f"Source  : {item.get('source', 'N/A')}")
         lines.append(f"URL     : {item.get('link', 'N/A')}")
@@ -125,146 +130,27 @@ def build_user_message(news_items: list[dict]) -> str:
         lines.append(f"Snippet : {item.get('snippet', 'N/A')}")
         if item.get("full_text"):
             lines.append(f"Body    : {item['full_text']}")
-        lines.append("")
+
+    if prev_report:
+        lines += ["", "=" * 60,
+                  "SECTION D — PREVIOUS DAY'S ANALYSIS BASELINE (use as continuity context)",
+                  "=" * 60, prev_report]
 
     lines.append(
-        "Apply Noise Filtering first, then produce the Playbook analysis "
+        "\nApply Noise Filtering first, then produce the Playbook analysis "
         "for every event that scores 7 or higher."
     )
     return "\n".join(lines)
 
 
-def run_ollama(system: str, user: str, label: str = "") -> str:
-    url = f"{OLLAMA_HOST}/api/chat"
-    payload = {
-        "model": OLLAMA_MODEL,
-        "stream": False,
-        "options": {"temperature": 0.3, "num_ctx": 8192},
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-    }
-    log.info("Ollama call: %s (%s)…", label or "inference", OLLAMA_MODEL)
-    resp = requests.post(url, json=payload, timeout=300)
-    resp.raise_for_status()
-    return resp.json()["message"]["content"]
-
-
-# ── HTML Email ────────────────────────────────────────────────────────────────
-
-def build_sources_md(news_items: list[dict]) -> str:
-    lines = ["\n---\n### 参考来源 · Sources\n"]
-    seen = set()
-    count = 0
-    for item in news_items:
-        url   = item.get("link", "")
-        title = item.get("title", url)
-        src   = item.get("source", "")
-        date  = item.get("date", "")
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        meta = " · ".join(filter(None, [src, date]))
-        lines.append(f"- [{title}]({url}){' — ' + meta if meta else ''}")
-        count += 1
-        if count >= 15:
-            break
-    return "\n".join(lines)
-
-
-HTML_TEMPLATE = """\
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  body {{
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: #f4f6f9;
-    margin: 0; padding: 20px;
-    color: #1a1a2e;
-  }}
-  .container {{
-    max-width: 760px;
-    margin: 0 auto;
-    background: #ffffff;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-  }}
-  .header {{
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
-    color: #ffffff;
-    padding: 28px 32px;
-  }}
-  .header h1 {{ margin: 0 0 6px 0; font-size: 22px; letter-spacing: 1px; }}
-  .header .meta {{ font-size: 13px; color: #a0aec0; }}
-  .body {{ padding: 28px 32px; line-height: 1.8; }}
-  h3 {{ color: #0f3460; border-left: 4px solid #e94560; padding-left: 12px; margin-top: 32px; }}
-  strong {{ color: #16213e; }}
-  table {{ width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }}
-  th {{ background: #0f3460; color: #fff; padding: 10px 14px; text-align: left; }}
-  td {{ padding: 9px 14px; border-bottom: 1px solid #e2e8f0; }}
-  tr:nth-child(even) td {{ background: #f8fafc; }}
-  hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 24px 0; }}
-  ul {{ padding-left: 20px; }}
-  li {{ margin-bottom: 6px; }}
-  a {{ color: #0f3460; text-decoration: none; border-bottom: 1px dotted #0f3460; }}
-  a:hover {{ color: #e94560; border-bottom-color: #e94560; }}
-  .footer {{
-    background: #f8fafc;
-    padding: 16px 32px;
-    font-size: 12px;
-    color: #718096;
-    border-top: 1px solid #e2e8f0;
-    text-align: center;
-  }}
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="header">
-    <h1>📊 Macro AI Lab · 每日宏观策略报告</h1>
-    <div class="meta">{date} &nbsp;·&nbsp; 模型: {model}</div>
-  </div>
-  <div class="body">{body}</div>
-  <div class="footer">
-    Macro AI Lab · 由本地 {model} 生成 · 仅供学习参考，不构成投资建议
-  </div>
-</div>
-</body>
-</html>
-"""
-
-
-def render_html(chinese_md: str, news_items: list[dict], model: str) -> str:
-    sources_md = build_sources_md(news_items)
-    full_md    = chinese_md + "\n" + sources_md
-    body_html  = markdown.markdown(full_md, extensions=["tables", "fenced_code", "nl2br"])
-    return HTML_TEMPLATE.format(
-        date=datetime.now().strftime("%Y年%m月%d日  %H:%M"),
-        model=model,
-        body=body_html,
-    )
-
-
-def send_email(subject: str, html: str, plain_text: str) -> None:
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = SMTP_USER
-    msg["To"]      = REPORT_RECIPIENT
-    msg.attach(MIMEText(plain_text, "plain", "utf-8"))
-    msg.attach(MIMEText(html,       "html",  "utf-8"))
-
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(SMTP_USER, REPORT_RECIPIENT, msg.as_string())
-
-    log.info("Report sent to %s", REPORT_RECIPIENT)
+def _parse_bilingual(response: str) -> tuple[str, str]:
+    marker = "[BEGIN_CHINESE_TRANSLATION]"
+    if marker not in response:
+        log.warning("Bilingual marker not found in LLM response — "
+                    "email will render English; check if model truncated output")
+        return response.strip(), response.strip()
+    eng, chn = response.split(marker, 1)
+    return eng.strip(), chn.strip()
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -272,39 +158,54 @@ def send_email(subject: str, html: str, plain_text: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Macro AI Lab — Daily Report")
     parser.add_argument("--test", action="store_true",
-                        help="Fast test: 1 query, skip Ollama, send [TEST] email")
+                        help="Fast test: 1 query, skip LLM, send [TEST] email")
     args = parser.parse_args()
 
     today_str      = datetime.now().strftime("%Y-%m-%d")
     subject_prefix = "[TEST] " if args.test else ""
 
-    log.info("=== Macro AI Lab — Daily Report %s%s ===",
-             today_str, " (TEST MODE)" if args.test else "")
+    log.info("=== Macro AI Lab — Daily Report %s%s (engine: %s) ===",
+             today_str, " (TEST MODE)" if args.test else "", LLM_ENGINE)
 
-    # 1. Gather news
+    # Section A — real-time ETF prices via Finnhub /quote
+    prices_md = fetch_macro_prices()
+
+    # Section A2 — yield curve + Fed Funds rate via FRED (no API key needed)
+    rates_md = fetch_rates_data()
+
+    # Section B — major earnings this week (Monday → Sunday)
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())   # Monday
+    week_end   = week_start + timedelta(days=6)            # Sunday
+    earnings_events = [] if args.test else fetch_earnings_calendar(week_start, week_end)
+    earnings_md = format_earnings_calendar(earnings_events)
+
+    # Section C — news
     news_items = gather_news(test_mode=args.test)
     if not news_items:
         log.warning("No news collected. Aborting.")
         return
 
-    # 2. Analysis + Translation (skipped in test mode)
+    # Section D — previous day's clean report (from reports/, not logs/)
+    prev_report = None if args.test else load_previous_report("macro")
+
     if args.test:
-        english = "[TEST MODE] Ollama inference skipped. Pipeline smoke-test only."
-        chinese = "[测试模式] 已跳过 Ollama 推理。仅验证邮件发送流程。"
-        log.info("Test mode — skipping Ollama inference")
+        english = f"[TEST MODE] {LLM_ENGINE} inference skipped. Pipeline smoke-test only."
+        chinese = f"[测试模式] 已跳过 {LLM_ENGINE} 推理。仅验证邮件发送流程。"
+        log.info("Test mode — skipping LLM inference")
     else:
-        analysis_prompt    = PromptLoader.load("macro", "analysis")
-        translation_prompt = PromptLoader.load("macro", "translation")
-        user_msg           = build_user_message(news_items)
-        english            = run_ollama(analysis_prompt, user_msg, label="analysis")
-        log.info("English analysis complete (%d chars)", len(english))
-        chinese            = run_ollama(translation_prompt, english, label="translation")
-        log.info("Chinese translation complete (%d chars)", len(chinese))
+        prompt   = PromptLoader.load("macro", "analysis")
+        user_msg = build_user_message(news_items, prices_md, rates_md, earnings_md, prev_report)
+        response = run_llm(prompt, user_msg, label="analysis+translation")
+        log.info("LLM response complete (%d chars)", len(response))
+        english, chinese = _parse_bilingual(response)
 
-    # 3. Build HTML and send
-    html    = render_html(chinese, news_items, OLLAMA_MODEL)
+        # Save clean English report to reports/ for tomorrow's baseline
+        save_report("macro", english)
+
+    html    = render_html(chinese, news_items, ACTIVE_MODEL,
+                          title_emoji="📊", title_text="每日宏观策略报告", style="macro")
     subject = f"{subject_prefix}【宏观AI实验室】每日策略报告 — {today_str}"
-
     print(english)
 
     try:

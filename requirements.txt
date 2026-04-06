@@ -1,0 +1,21 @@
+# Macro AI Lab — Python dependencies
+# Install: pip install -r requirements.txt
+# Tested on Python 3.11+
+
+# LLM
+anthropic>=0.88.0
+
+# HTTP / APIs
+requests>=2.33.1
+
+# Financial data
+yfinance>=1.2.0
+
+# Article extraction (optional but recommended — falls back to regex without it)
+trafilatura>=2.0.0
+
+# Email rendering
+Markdown>=3.10.2
+
+# Environment
+python-dotenv>=1.2.2

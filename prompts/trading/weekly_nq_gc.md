@@ -62,3 +62,22 @@ CONSTRAINTS
 - COT analysis is a confirmation tool — do not use it as the sole reason for a trade.
 - If macro uncertainty is too high for a directional bet, say so and explain what to watch.
 - Professional, concise tone. No generic disclaimers.
+
+════════════════════════════════════════
+STEP 3 — CHINESE TRANSLATION
+════════════════════════════════════════
+After completing the English strategy report above, output the exact token:
+
+[BEGIN_CHINESE_TRANSLATION]
+
+Then produce a complete Simplified Chinese (简体中文) translation of the entire report.
+
+Rules:
+- Preserve ALL markdown formatting exactly (###, **, |table|, ---, &nbsp;, etc.)
+- Keep all instrument names, price levels, and numbers unchanged (e.g., NQ, GC, R1, S2, MA)
+- Keep all emoji and special symbols unchanged (📈, 📉, ⚠️)
+- Use standard Chinese futures/trading terminology:
+    纳斯达克100期货, 黄金期货, 多头/空头, 止损, 目标位, 支撑位, 阻力位,
+    枢轴点, 风险回报比, 周度策略, 持仓报告 (COT), 大型投机者,
+    美联储, 美元指数, 实际收益率
+- Do not add explanations or commentary — pure translation only.
