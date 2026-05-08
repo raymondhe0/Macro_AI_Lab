@@ -18,7 +18,7 @@ def run_claude(system: str, user: str, label: str = "") -> str:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     with client.messages.stream(
         model=CLAUDE_MODEL,
-        max_tokens=16000,
+        max_tokens=32000,
         thinking={"type": "adaptive"},
         system=system,
         messages=[{"role": "user", "content": user}],

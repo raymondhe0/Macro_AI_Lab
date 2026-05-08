@@ -83,7 +83,7 @@ _HTML_TEMPLATE = """\
 </html>
 """
 
-# Preset styles: "macro" (dark blue) or "trading" (dark green)
+# Preset styles: "macro" (dark blue), "trading" (dark green), "stock" (deep purple)
 _STYLES = {
     "macro": {
         "header_gradient": "linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%)",
@@ -94,6 +94,11 @@ _STYLES = {
         "header_gradient": "linear-gradient(135deg, #0d1b2a 0%, #1b4332 60%, #1a6b3c 100%)",
         "accent_color":    "#1b4332",
         "highlight_color": "#f6c90e",
+    },
+    "stock": {
+        "header_gradient": "linear-gradient(135deg, #1a0533 0%, #2d1060 60%, #4a1d96 100%)",
+        "accent_color":    "#4a1d96",
+        "highlight_color": "#f59e0b",
     },
 }
 

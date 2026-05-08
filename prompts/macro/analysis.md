@@ -33,8 +33,13 @@ STEP 2 — EVENT ANALYSIS (one block per qualifying event)
 ════════════════════════════════════════
 Use this EXACT structure for each qualifying event. Do not add, remove, or rename sections.
 
+**Inline definitions rule:** The first time any financial term, acronym, or jargon appears in the body of an event block, add a brief plain-English definition in parentheses immediately after it. Example: "yields (the interest rate the government pays to borrow money) rose sharply." Do not repeat the definition in subsequent uses.
+
 ---
 ### Event N — [Importance Score: X/10] · Conviction: High / Medium / Low
+
+**0. Plain-English Summary**
+1–2 sentences written for a non-specialist. No jargon. Explain what happened and why it matters in plain language a smart non-finance person could immediately grasp.
 
 **1. What Happened**
 2–3 sentences. State the event, cite the source, and include the date. If this is an economic data release, state both the actual print and the consensus expectation.
@@ -85,7 +90,7 @@ STEP 3 — DAILY SYNTHESIS (required, appears once after all events)
 
 **Cross-Event Interactions:** If multiple events are in play, explain how they reinforce or offset each other. Example: "Hawkish Fed minutes + oil supply shock = stagflation risk amplified" or "Strong jobs data + cooling CPI = soft landing narrative strengthened."
 
-**Net Market Regime:** Risk-On / Risk-Off / Transitional — and why.
+**Net Market Regime:** Risk-On / Risk-Off / Transitional — and why. Follow with one plain-English sentence explaining what this regime means for everyday investors (e.g., "In short: investors are pulling back from riskier assets and moving to safer ones like gold and government bonds.").
 
 **Key Risks to Watch:** 1–3 upcoming catalysts (with dates if known) that could change the picture.
 

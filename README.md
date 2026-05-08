@@ -21,9 +21,10 @@ A "Zero-Cost, Privacy-First" pipeline that:
 | **News search** | [Serper.dev API](https://serper.dev/) — Google News with date filtering |
 | **Financial data** | [Finnhub API](https://finnhub.io/) — real-time prices, earnings calendar, news feed |
 | **Futures technicals** | [yfinance](https://github.com/ranaroussi/yfinance) — NQ & GC OHLCV history, pivot points, MAs |
+| **Technical indicators** | [stockstats](https://github.com/jealous/stockstats) — RSI, ATR, MACD, Bollinger Bands for futures & equities |
 | **Article extraction** | [trafilatura](https://trafilatura.readthedocs.io/) — clean body text (no regex scraping) |
 | **Orchestration** | Python 3.11+ |
-| **Scheduling** | macOS `launchd` — 07:00 trading · 07:30 macro |
+| **Scheduling** | Shell wrappers (`run_trading.sh`, `run_daily.sh`) — manual run or configurable via scheduler |
 
 ---
 
@@ -86,11 +87,16 @@ Two parallel pipelines run each morning, both drawing from a shared `lib/` layer
 
 ```mermaid
 flowchart TD
-    %% ── Scheduling ──────────────────────────────────────────
-    LAUNCHD["⏰ macOS launchd<br/>07:00 trading · 07:30 macro"]
+    %% ── Entry points ─────────────────────────────────────────
+    RUN_T["run_trading.sh<br/>(manual or scheduled)"]
+    RUN_M["run_daily.sh<br/>(manual or scheduled)"]
 
-    LAUNCHD -->|"run_trading.sh"| TA["trading_analyst.py"]
-    LAUNCHD -->|"run_daily.sh"| MA["macro_analyst.py"]
+    RUN_T --> TA["trading_analyst.py"]
+    RUN_M --> MA["macro_analyst.py"]
+
+    %% ── Stock pipeline entry ────────────────────────────────
+    RUN_S["python3 stock_analyst.py<br/>--ticker AAPL MSFT NVDA"]
+    RUN_S --> SA["stock_analyst.py"]
 
     %% ── Shared lib ─────────────────────────────────────────
     LIB["scripts/lib/<br/>config · sources · search<br/>finnhub_client · market_data<br/>llm · email_report · report_store"]
@@ -117,16 +123,31 @@ flowchart TD
         MSG_M -->|"analysis.md"| LLM_M["LLM (Claude / Ollama)<br/>Playbook Analysis<br/>+ Chinese Translation<br/>(single call)"]
     end
 
+    %% ── STOCK PIPELINE ──────────────────────────────────────
+    subgraph STOCK ["🔍 Stock Pipeline  (individual tickers)"]
+        direction TB
+        SA --> YF_S["yfinance<br/>Price · Fundamentals · Technicals<br/>(stockstats: RSI · MACD · ATR · Bollinger)"]
+        SA --> FH_S["Finnhub /calendar/earnings<br/>Next 2 weeks for requested tickers"]
+        SA --> SF_S["Serper.dev<br/>Per-ticker news queries<br/>7-day window"]
+        SF_S --> FILT_S["Source Filter"]
+        YF_S & FH_S & FILT_S --> MSG_S["build_user_message()<br/>Sec A: Stock Data (yfinance)<br/>Sec B: Earnings (Finnhub)<br/>Sec C: News<br/>Sec D: Prev Analysis Baseline<br/>Sec E: Macro Regime Context"]
+        MSG_S -->|"stock/analysis.md"| LLM_S["LLM (Claude / Ollama)<br/>7-Step Equity Research<br/>+ Chinese Translation<br/>(single call)"]
+    end
+
     LIB -.-> TRADING
     LIB -.-> MACRO
+    LIB -.-> STOCK
 
     %% ── Output ──────────────────────────────────────────────
     LLM_T --> HTML_T["render_html() — trading style"]
     LLM_M --> HTML_M["render_html() — macro style"]
+    LLM_S --> HTML_S["render_html() — stock style"]
     HTML_T --> EMAIL_T["📧 Gmail SMTP<br/>【宏观AI实验室】NQ & GC 日内策略"]
     HTML_M --> EMAIL_M["📧 Gmail SMTP<br/>【宏观AI实验室】每日策略报告"]
+    HTML_S --> EMAIL_S["📧 Gmail SMTP<br/>【宏观AI实验室】个股分析报告"]
     EMAIL_T --> LOG_T["logs/ — infrastructure debug"]
     EMAIL_M --> RPT["reports/macro_YYYY-MM-DD.md<br/>clean analysis → next day baseline"]
+    EMAIL_S --> RPT_S["reports/stock_TICKER_YYYY-MM-DD.md<br/>per-ticker baseline for next run"]
 ```
 
 ---
@@ -170,6 +191,56 @@ ollama serve
 
 ---
 
+### `stock_analyst.py` — Individual Stock Research Report
+
+```bash
+python3 stock_analyst.py --ticker AAPL                 # single stock
+python3 stock_analyst.py --ticker AAPL MSFT NVDA       # multi-stock portfolio view
+python3 stock_analyst.py --ticker TSLA --test          # smoke-test: skip LLM, send [TEST] email
+```
+
+| Command | Behavior |
+|:--------|:---------|
+| `python3 stock_analyst.py --ticker <TICK…>` | Full run — yfinance fundamentals/technicals + Finnhub earnings + Serper news + LLM + email |
+| `python3 stock_analyst.py --ticker <TICK…> --test` | Smoke-test — 1 query, skips LLM, sends `[TEST]` email |
+
+**What the report covers (7-step equity research prompt):**
+
+| Step | Content |
+|:-----|:--------|
+| 1 | News materiality scoring (1–10) for each ticker |
+| 2 | Adversarial stress test — bull case, bear case, objective resolution |
+| 3 | Fundamental & technical synthesis (valuation, earnings quality, technicals, macro context) |
+| 4 | Long-only buy strategy — verdict, medium-term entry/target/stop, long-term accumulation plan |
+| 5 | Risk register & upcoming catalysts |
+| 6 | Cross-stock portfolio view (multi-ticker only) — tier classification, sequencing, diversification check |
+| 7 | Full Simplified Chinese translation |
+
+**Sections injected into the LLM prompt:**
+
+| Section | Data source |
+|:--------|:------------|
+| A — Stock data | yfinance: price, 52-wk range, volume, P/E, EPS, revenue, margins, RSI, ATR, MACD, Bollinger |
+| B — Earnings calendar | Finnhub: next 2 weeks, filtered to requested tickers |
+| C — News (7 days) | yfinance ticker news + Serper per-ticker queries |
+| D — Previous analysis | `reports/stock_<TICKER>_*.md` — prior run baseline for continuity |
+| E — Macro regime | Latest `reports/macro_*.md` — backdrop from the macro pipeline |
+
+Reports are saved to `reports/stock_<ticker>_YYYY-MM-DD.md` for use as next-run baseline.
+
+---
+
+### `resend_trading_report.py` — Retranslate & Resend
+
+One-off utility to take an existing English trading report, translate it to Chinese via LLM, and resend the email.
+
+```bash
+python3 resend_trading_report.py                    # reads latest reports/trading_intraday_*.md
+python3 resend_trading_report.py --file path.md     # use a specific report file
+```
+
+---
+
 ### `fetch_news.py` — CLI News Fetcher
 
 ```bash
@@ -180,14 +251,14 @@ python3 fetch_news.py "S&P 500" --start 2026-03-01 --end 2026-03-31 --json
 
 ---
 
-### Shell wrappers (used by `launchd`)
+### Shell wrappers
 
-| Script | Schedule | Behavior |
-|:-------|:---------|:---------|
-| `run_trading.sh` | 07:00 AM daily | Auto-selects `--mode weekly` on Mondays, `intraday` all other days. Logs to `logs/` |
-| `run_daily.sh` | 07:30 AM daily | Always runs macro report. Logs to `logs/` |
+| Script | Behavior |
+|:-------|:---------|
+| `run_trading.sh` | Auto-selects `--mode weekly` on Mondays, `intraday` all other days. Logs to `logs/` |
+| `run_daily.sh` | Always runs macro report. Logs to `logs/` |
 
-Both scripts use `caffeinate -i` to prevent the Mac from sleeping during execution.
+Both scripts use `caffeinate -i` to prevent the Mac from sleeping during execution. Scheduling (e.g. via macOS `launchd` or `cron`) is not configured — run manually or wire up a scheduler as needed.
 
 ---
 
@@ -228,26 +299,33 @@ Macro_AI_Lab/
 ├── prompts/
 │   ├── macro/
 │   │   └── analysis.md          # Noise filter → Playbook analysis → Chinese translation (single prompt)
-│   └── trading/
-│       ├── intraday_nq_gc.md    # Intraday NQ/GC setups → Chinese translation (single prompt)
-│       └── weekly_nq_gc.md      # Weekly NQ/GC strategy → Chinese translation (single prompt)
+│   ├── trading/
+│   │   ├── intraday_nq_gc.md    # Intraday NQ/GC setups → Chinese translation (single prompt)
+│   │   └── weekly_nq_gc.md      # Weekly NQ/GC strategy → Chinese translation (single prompt)
+│   └── stock/
+│       └── analysis.md          # 7-step equity research → long-only buy strategy → Chinese translation
 ├── scripts/
 │   ├── lib/                     # Shared library (imported by all pipelines)
 │   │   ├── config.py            # All env-var loading
 │   │   ├── sources.py           # TRUSTED_SOURCES + MACRO_TRUSTED_SOURCES allowlists
 │   │   ├── search.py            # serper_search, fetch_article_text (trafilatura), build_tbs
 │   │   ├── finnhub_client.py    # Earnings calendar + general news (free tier)
-│   │   ├── market_data.py       # Real-time ETF prices via Finnhub /quote
+│   │   ├── market_data.py       # Real-time ETF prices via Finnhub /quote (market-closed fallback)
+│   │   ├── stock_data.py        # yfinance + stockstats: price, fundamentals, RSI/MACD/ATR/Bollinger
 │   │   ├── llm.py               # run_claude / run_ollama / run_llm
-│   │   ├── email_report.py      # render_html, send_email, build_sources_md
+│   │   ├── email_report.py      # render_html (trading/macro/stock styles), send_email
 │   │   ├── report_store.py      # Save/load clean analysis to reports/ for day-over-day baseline
 │   │   └── prompt_loader.py     # Loads prompts from .md files at runtime
 │   ├── macro_analyst.py         # Daily macro report entry point
-│   ├── trading_analyst.py       # NQ & GC trading report entry point
+│   ├── trading_analyst.py       # NQ & GC trading report entry point (intraday + weekly)
+│   ├── stock_analyst.py         # Individual stock research report entry point
+│   ├── resend_trading_report.py # One-off: retranslate existing report to Chinese and resend
 │   ├── fetch_news.py            # CLI news fetcher (debugging tool)
-│   ├── run_daily.sh             # launchd wrapper — macro report
-│   └── run_trading.sh           # launchd wrapper — trading report
+│   ├── run_daily.sh             # Shell wrapper — macro report
+│   └── run_trading.sh           # Shell wrapper — trading report (auto-selects weekly on Monday)
 ├── reports/                     # Clean daily analysis saved as .md (used as next-day LLM baseline)
+│                                # macro_YYYY-MM-DD.md · stock_<TICKER>_YYYY-MM-DD.md
+├── research/                    # Internal research notes and planning docs
 ├── playbook/                    # News-to-Market methodology docs
 ├── config/                      # Ollama Modelfiles
 ├── logs/                        # Infrastructure / debug logs only

@@ -11,17 +11,18 @@ Usage:
 
 import argparse
 import logging
-from datetime import date, datetime
+from datetime import datetime
 
 import yfinance as yf
+from stockstats import wrap as ss_wrap
 
 from lib.config import ACTIVE_MODEL, LLM_ENGINE
 from lib.search import serper_search, fetch_article_text, last_24h_tbs
 from lib.sources import is_trusted_source
-from lib.finnhub_client import fetch_economic_calendar, fetch_general_news, format_economic_calendar
+from lib.finnhub_client import fetch_general_news
 from lib.llm import run_llm
 from lib.email_report import render_html, send_email
-from lib.previous_log import load_previous_log
+from lib.report_store import save_report, load_previous_report
 from lib.prompt_loader import PromptLoader
 
 # ── Queries ───────────────────────────────────────────────────────────────────
@@ -56,47 +57,79 @@ def _compute_pivots(high: float, low: float, close: float) -> dict:
             "S1": 2*pp - high, "S2": pp - (high - low)}
 
 
-def _fetch_levels(ticker: str, label: str) -> str:
+def _fetch_levels(ticker: str, label: str, mode: str = "intraday") -> str:
     try:
-        hist = yf.Ticker(ticker).history(period="6mo", interval="1d")
+        hist = yf.Ticker(ticker).history(period="2y", interval="1d")
         if hist.empty or len(hist) < 6:
             return f"{label} ({ticker}): insufficient data from yfinance."
 
-        prior_week = hist.iloc[-6:-1]
-        pw_high, pw_low = prior_week["High"].max(), prior_week["Low"].min()
-        pw_close = hist.iloc[-2]["Close"]
-        current  = hist["Close"].iloc[-1]
+        # Prior settlement (most recent completed bar)
+        current = hist["Close"].iloc[-1]
+
+        # Pivot levels — daily for intraday, weekly for weekly
+        if mode == "intraday":
+            pd_bar  = hist.iloc[-1]
+            pv      = _compute_pivots(pd_bar["High"], pd_bar["Low"], pd_bar["Close"])
+            pv_high = pd_bar["High"]
+            pv_low  = pd_bar["Low"]
+            pv_close= pd_bar["Close"]
+            pv_label = ("Prior Day High", "Prior Day Low", "Prior Day Close")
+        else:
+            prior_week = hist.iloc[-6:-1]
+            pv_high  = prior_week["High"].max()
+            pv_low   = prior_week["Low"].min()
+            pv_close = hist.iloc[-2]["Close"]
+            pv       = _compute_pivots(pv_high, pv_low, pv_close)
+            pv_label = ("Prior Week High", "Prior Week Low", "Prior Week Close")
+
+        # Moving averages
         ma20  = hist["Close"].rolling(20).mean().iloc[-1]
         ma50  = hist["Close"].rolling(50).mean().iloc[-1]
         ma200 = hist["Close"].rolling(200).mean().iloc[-1]
-        pv    = _compute_pivots(pw_high, pw_low, pw_close)
+
+        # Momentum / volatility indicators via stockstats
+        hist_reset = hist.reset_index()
+        hist_reset.columns = [c.lower() for c in hist_reset.columns]
+        ss = ss_wrap(hist_reset)
+        rsi   = float(ss["rsi"].iloc[-1])
+        atr   = float(ss["atr"].iloc[-1])
+        macd  = float(ss["macd"].iloc[-1])
+        macds = float(ss["macds"].iloc[-1])
+        boll_ub = float(ss["boll_ub"].iloc[-1])
+        boll_lb = float(ss["boll_lb"].iloc[-1])
 
         return "\n".join([
             f"\n### {label} ({ticker}) — Technical Levels (auto-fetched via yfinance)\n",
-            "| Level            | Price      |",
-            "|:-----------------|:-----------|",
-            f"| Current Price    | {current:>10.2f} |",
-            f"| Prior Week High  | {pw_high:>10.2f} |",
-            f"| Prior Week Low   | {pw_low:>10.2f} |",
-            f"| Prior Week Close | {pw_close:>10.2f} |",
-            f"| Pivot Point (PP) | {pv['PP']:>10.2f} |",
-            f"| Resistance 1 (R1)| {pv['R1']:>10.2f} |",
-            f"| Resistance 2 (R2)| {pv['R2']:>10.2f} |",
-            f"| Support 1 (S1)   | {pv['S1']:>10.2f} |",
-            f"| Support 2 (S2)   | {pv['S2']:>10.2f} |",
-            f"| 20-Day MA        | {ma20:>10.2f} |",
-            f"| 50-Day MA        | {ma50:>10.2f} |",
-            f"| 200-Day MA       | {ma200:>10.2f} |",
+            "| Level              | Value      |",
+            "|:-------------------|:-----------|",
+            f"| Prior Settlement   | {current:>10.2f} |",
+            f"| {pv_label[0]:<18} | {pv_high:>10.2f} |",
+            f"| {pv_label[1]:<18} | {pv_low:>10.2f} |",
+            f"| {pv_label[2]:<18} | {pv_close:>10.2f} |",
+            f"| Pivot Point (PP)   | {pv['PP']:>10.2f} |",
+            f"| Resistance 1 (R1)  | {pv['R1']:>10.2f} |",
+            f"| Resistance 2 (R2)  | {pv['R2']:>10.2f} |",
+            f"| Support 1 (S1)     | {pv['S1']:>10.2f} |",
+            f"| Support 2 (S2)     | {pv['S2']:>10.2f} |",
+            f"| 20-Day MA          | {ma20:>10.2f} |",
+            f"| 50-Day MA          | {ma50:>10.2f} |",
+            f"| 200-Day MA         | {ma200:>10.2f} |",
+            f"| RSI(14)            | {rsi:>10.2f} |",
+            f"| ATR(14)            | {atr:>10.2f} |",
+            f"| MACD               | {macd:>10.4f} |",
+            f"| MACD Signal        | {macds:>10.4f} |",
+            f"| Bollinger Upper    | {boll_ub:>10.2f} |",
+            f"| Bollinger Lower    | {boll_lb:>10.2f} |",
         ])
     except Exception as exc:
         log.warning("yfinance fetch failed for %s: %s", ticker, exc)
         return f"{label} ({ticker}): could not fetch technical levels — {exc}"
 
 
-def get_all_technical_levels() -> str:
-    log.info("Fetching technical levels via yfinance…")
-    return _fetch_levels("NQ=F", "Nasdaq 100 Futures (NQ)") + "\n\n" + \
-           _fetch_levels("GC=F", "Gold Futures (GC)")
+def get_all_technical_levels(mode: str = "intraday") -> str:
+    log.info("Fetching technical levels via yfinance (mode=%s)…", mode)
+    return _fetch_levels("NQ=F", "Nasdaq 100 Futures (NQ)", mode) + "\n\n" + \
+           _fetch_levels("GC=F", "Gold Futures (GC)", mode)
 
 
 # ── yfinance news ─────────────────────────────────────────────────────────────
@@ -204,9 +237,9 @@ def gather_news(mode: str, test_mode: bool) -> list[dict]:
 def build_user_message(
     news_items: list[dict],
     tech_levels: str,
-    calendar_md: str,
     mode: str,
     prev_log: str | None,
+    macro_regime: str | None,
 ) -> str:
     today = datetime.now().strftime("%A, %B %d, %Y")
     is_weekly = mode == "weekly"
@@ -214,9 +247,7 @@ def build_user_message(
         f"Today is {today}. Mode: {'WEEKLY strategy' if is_weekly else 'INTRADAY strategy'}.\n",
         "=" * 60, "SECTION A — TECHNICAL LEVELS (yfinance)", "=" * 60,
         tech_levels, "",
-        "=" * 60, "SECTION B — ECONOMIC CALENDAR (Finnhub)", "=" * 60,
-        calendar_md, "",
-        "=" * 60, "SECTION C — NEWS & MARKET CONTEXT", "=" * 60,
+        "=" * 60, "SECTION B — NEWS & MARKET CONTEXT", "=" * 60,
     ]
 
     for i, item in enumerate(news_items, 1):
@@ -230,12 +261,16 @@ def build_user_message(
             lines.append(f"Body    : {item['full_text']}")
 
     if prev_log:
-        lines += ["", "=" * 60, "SECTION D — PREVIOUS DAY'S ANALYSIS BASELINE",
+        lines += ["", "=" * 60, "SECTION C — PREVIOUS DAY'S TRADING BASELINE",
                   "=" * 60, prev_log]
 
+    if macro_regime:
+        lines += ["", "=" * 60, "SECTION D — MACRO REGIME CONTEXT (from macro_analyst)",
+                  "=" * 60, macro_regime]
+
     lines.append(
-        f"\nUsing the technical levels from Section A, economic calendar from Section B, "
-        f"and news from Section C, produce the {'weekly' if is_weekly else 'intraday'} strategy report."
+        f"\nUsing the technical levels from Section A and news from Section B, "
+        f"produce the {'weekly' if is_weekly else 'intraday'} strategy report."
     )
     return "\n".join(lines)
 
@@ -272,18 +307,15 @@ def main() -> None:
     log.info("=== Macro AI Lab — %s %s%s (engine: %s) ===",
              prompt_name, today_str, " (TEST MODE)" if args.test else "", LLM_ENGINE)
 
-    tech_levels = get_all_technical_levels()
-
-    today       = date.today()
-    cal_events  = [] if args.test else fetch_economic_calendar(today, today)
-    calendar_md = format_economic_calendar(cal_events)
+    tech_levels = get_all_technical_levels(mode=args.mode)
 
     news_items = gather_news(mode=args.mode, test_mode=args.test)
     if not news_items:
         log.warning("No news collected. Aborting.")
         return
 
-    prev_log = None if args.test else load_previous_log(f"trading_{args.mode}")
+    prev_log     = None if args.test else load_previous_report(f"trading_{args.mode}")
+    macro_regime = None if args.test else load_previous_report("macro")
 
     if args.test:
         english = (f"[TEST MODE — {prompt_name}] {LLM_ENGINE} inference skipped.\n\n"
@@ -293,10 +325,11 @@ def main() -> None:
         log.info("Test mode — skipping LLM inference")
     else:
         prompt   = PromptLoader.load("trading", prompt_name)
-        user_msg = build_user_message(news_items, tech_levels, calendar_md, args.mode, prev_log)
+        user_msg = build_user_message(news_items, tech_levels, args.mode, prev_log, macro_regime)
         response = run_llm(prompt, user_msg, label=prompt_name)
         log.info("LLM response complete (%d chars)", len(response))
         english, chinese = _parse_bilingual(response)
+        save_report(f"trading_{args.mode}", english)
 
     html = render_html(chinese, news_items, ACTIVE_MODEL,
                        title_emoji="📈", title_text=report_type, style="trading")

@@ -54,8 +54,13 @@ def _quote(symbol: str) -> dict | None:
         )
         resp.raise_for_status()
         data = resp.json()
-        # Finnhub returns c=0 when market is closed and no data exists
-        return data if data.get("c") else None
+        if data.get("c"):
+            return data
+        # Market closed — c=0. Fall back to previous close if available.
+        if data.get("pc"):
+            log.debug("Market closed for %s — using previous close", symbol)
+            return {**data, "c": data["pc"], "_prev_close_only": True}
+        return None
     except Exception as exc:
         log.warning("Finnhub quote failed for %s: %s", symbol, exc)
         return None
@@ -72,6 +77,8 @@ def fetch_macro_prices() -> str:
         q = _quote(symbol)
         if q is None:
             rows.append({"label": label, "symbol": symbol, "error": True})
+        elif q.get("_prev_close_only"):
+            rows.append({"label": label, "symbol": symbol, "price": q["c"], "prev_only": True})
         else:
             rows.append({
                 "label":  label,
@@ -85,15 +92,23 @@ def fetch_macro_prices() -> str:
             })
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    # Determine if all rows are prev-close only (market closed)
+    live_count = sum(1 for r in rows if not r.get("error") and not r.get("prev_only"))
+    price_label = "Price" if live_count else "Prev Close"
+    note = "" if live_count else " _(market closed — showing prior session close)_"
+
     lines = [
-        f"_Prices as of {ts} — ETF proxies, real-time via Finnhub_\n",
-        "| Instrument | Price | Chg | Chg% | Day High | Day Low |",
+        f"_Prices as of {ts} — ETF proxies via Finnhub{note}_\n",
+        f"| Instrument | {price_label} | Chg | Chg% | Day High | Day Low |",
         "|:-----------|------:|----:|-----:|---------:|--------:|",
     ]
 
     for r in rows:
         if r.get("error"):
             lines.append(f"| {r['label']} | — | — | — | — | — |")
+            continue
+        if r.get("prev_only"):
+            lines.append(f"| {r['label']} | {r['price']:.2f} | — | — | — | — |")
             continue
         arrow = "▲" if r["change"] >= 0 else "▼"
         sign  = "+" if r["change"] >= 0 else ""
