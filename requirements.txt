@@ -14,9 +14,13 @@ stockstats>=0.6.0
 
 # Article extraction (optional but recommended — falls back to regex without it)
 trafilatura>=2.0.0
+lxml_html_clean>=0.4.0
 
 # Email rendering
 Markdown>=3.10.2
+
+# Config / YAML
+PyYAML>=6.0.2
 
 # Environment
 python-dotenv>=1.2.2
