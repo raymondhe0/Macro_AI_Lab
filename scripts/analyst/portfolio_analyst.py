@@ -69,7 +69,7 @@ def fetch_portfolio_prices() -> str:
             ma200      = hist["Close"].rolling(200).mean().iloc[-1]
             vs_50      = (price / ma50 - 1) * 100
             vs_200     = (price / ma200 - 1) * 100
-            high_52w   = hist["High"].rolling(252).max().iloc[-1]
+            high_52w   = hist["High"].max()
             off_peak   = (price / high_52w - 1) * 100
             hist_r     = hist.reset_index()
             hist_r.columns = [c.lower() for c in hist_r.columns]
