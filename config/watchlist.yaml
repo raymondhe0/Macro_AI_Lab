@@ -1,0 +1,98 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Macro AI Lab — Stock Watchlist
+#
+# core:      Deeply tracked daily. Must have a clear one-sentence thesis.
+# watchlist: Monitored for catalyst. Upgrade to core when thesis confirms.
+#
+# layers:
+#   infrastructure — physical bottleneck (fabs, power, hardware)
+#   compute        — AI accelerators / chips
+#   platform       — model providers, cloud AI, developer ecosystem
+#   application    — AI-native software, enterprise SaaS
+# ──────────────────────────────────────────────────────────────────────────────
+
+core:
+  - ticker: NVDA
+    name: "NVIDIA"
+    layer: compute
+    thesis: >
+      AI compute monopoly. CUDA ecosystem has a 10-year head start;
+      no rival can displace it at training scale. Blackwell ramp is the
+      current earnings driver.
+    key_risks:
+      - "Custom silicon from hyperscalers (Google TPU, Amazon Trainium) erodes addressable market"
+      - "Export controls expand to additional geographies"
+      - "Margin compression if HBM supply tightens"
+
+  - ticker: GOOGL
+    name: "Alphabet / Google"
+    layer: platform
+    thesis: >
+      Most vertically integrated AI player: owns the chip (TPU), the model
+      (Gemini), the cloud (GCP), and the distribution (Search + Android).
+      Optionality across every AI layer is unmatched.
+    key_risks:
+      - "Search revenue disrupted by AI answer engines (ChatGPT, Perplexity)"
+      - "Antitrust breakup of ad business or app store"
+      - "TPU remains behind NVDA at external-customer scale"
+
+  - ticker: MSFT
+    name: "Microsoft"
+    layer: platform
+    thesis: >
+      OpenAI partnership gives enterprise-grade AI distribution through
+      Office 365, Azure, and GitHub Copilot. Fastest AI monetisation
+      of any Big Tech company via Copilot seat pricing.
+    key_risks:
+      - "OpenAI relationship fractures or OpenAI launches competing cloud"
+      - "Copilot ROI unproven; enterprise renewals disappoint"
+      - "Azure growth deceleration as AI workloads consolidate"
+
+  - ticker: TSM
+    name: "TSMC"
+    layer: infrastructure
+    thesis: >
+      Physical bottleneck for every AI chip in existence. Apple, NVDA,
+      AMD, Google TPU — all manufactured on TSMC N3/N2 nodes.
+      Pricing power is structural; no credible alternative at leading edge.
+    key_risks:
+      - "Taiwan geopolitical risk (cross-strait tension)"
+      - "Intel Foundry or Samsung close the process node gap"
+      - "US CHIPS Act pushes customers to domestic fabs"
+
+watchlist:
+  - ticker: META
+    name: "Meta Platforms"
+    layer: platform
+    thesis: >
+      Llama open-source strategy bets on becoming the Linux of AI.
+      AI CapEx is the most aggressive of any Big Tech company, but
+      direct monetisation path (ads + Ray-Ban + Meta AI) is still unproven.
+    upgrade_condition: "Llama monetisation confirmed via API revenue or enterprise licensing"
+    key_risks:
+      - "AI CapEx ($60B+ guided) destroys FCF without clear return"
+      - "EU regulatory action on data privacy"
+
+  - ticker: AMD
+    name: "Advanced Micro Devices"
+    layer: compute
+    thesis: >
+      Credible alternative to NVDA for inference workloads via MI300.
+      Hyperscalers use AMD to reduce NVDA dependency, but CUDA ecosystem
+      makes broad displacement unlikely without a major NVDA stumble.
+    upgrade_condition: "AMD secures a major training workload win from a top-3 hyperscaler"
+    key_risks:
+      - "ROCm software stack too immature for broad adoption"
+      - "NVDA Blackwell makes MI300 obsolete before MI400 ships"
+
+  - ticker: AMZN
+    name: "Amazon"
+    layer: platform
+    thesis: >
+      AWS is the largest cloud provider; Bedrock and Trainium chips
+      are Amazon's AI infrastructure play. Less model-differentiated
+      than MSFT/GOOGL but benefits from AI workload volume growth.
+    upgrade_condition: "Trainium adoption by third-party model providers at meaningful scale"
+    key_risks:
+      - "AWS AI story weaker vs Azure and GCP in model differentiation"
+      - "Retail margin pressure offsets cloud AI tailwind at the index level"

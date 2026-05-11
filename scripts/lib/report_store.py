@@ -5,7 +5,7 @@ Logs (infrastructure output) stay in logs/ — used for debugging only.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def load_previous_report(prefix: str) -> str | None:
     today_stem = f"{prefix}_{datetime.now().strftime('%Y-%m-%d')}"
     candidates = sorted(
         (p for p in _REPORTS_DIR.glob(f"{prefix}_*.md") if p.stem != today_stem),
-        key=lambda p: p.stat().st_mtime,
+        key=lambda p: p.stem,
         reverse=True,
     )
 
@@ -66,6 +66,20 @@ def load_previous_report(prefix: str) -> str | None:
         return None
 
     path = candidates[0]
+
+    # Staleness check: skip reports older than 3 days (stale context misleads LLM)
+    try:
+        report_date = datetime.strptime(path.stem.split("_", 1)[1], "%Y-%m-%d")
+        age_days = (datetime.now() - report_date).days
+        if age_days > 3:
+            log.warning(
+                "Previous report %s is %d days old — skipping stale baseline",
+                path.name, age_days,
+            )
+            return None
+    except (ValueError, IndexError):
+        pass  # unparseable filename — proceed anyway
+
     try:
         full_text = path.read_text(encoding="utf-8")
         synthesis = _extract_synthesis(full_text)

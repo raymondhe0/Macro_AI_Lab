@@ -1,7 +1,7 @@
 """Live spot prices for key macro instruments via Finnhub /quote.
 
 ETF proxies are used since Finnhub covers equities/ETFs, not raw index tickers:
-  SPY  → S&P 500 index        QQQ  → Nasdaq 100 index
+  VOO  → S&P 500 index        QQQ  → Nasdaq 100 index
   GLD  → Gold (XAU/USD)       USO  → WTI Crude Oil
   TLT  → 20-Year Treasury     HYG  → High Yield credit spread proxy
   UUP  → US Dollar (DXY proxy) VIXY → VIX proxy
@@ -22,7 +22,7 @@ _BASE = "https://finnhub.io/api/v1"
 
 # (symbol, display label)
 _INSTRUMENTS: list[tuple[str, str]] = [
-    ("SPY",  "S&P 500 (SPY)"),
+    ("VOO",  "S&P 500 (VOO)"),
     ("QQQ",  "Nasdaq 100 (QQQ)"),
     ("VIXY", "VIX proxy (VIXY)"),
     ("TLT",  "20Y Treasury (TLT)"),

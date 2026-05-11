@@ -24,3 +24,6 @@ env/
 
 # Claude Code session data
 .claude/
+
+# Intermediate raw data (fetcher output, not source code)
+raw_data/
