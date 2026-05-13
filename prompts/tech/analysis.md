@@ -118,16 +118,25 @@ STEP 3 — DAILY TECH SYNTHESIS (required, appears once after all developments)
 
 **Recommended Positioning:** 3–5 concrete, actionable stances for a long-only tech investor:
 
-| Instrument | Signal | Rationale |
-|:-----------|:-------|:----------|
-| e.g., NVDA | Buy on Dip / Buy Now / Wait / Hold | One-line tied to dominant narrative |
-| e.g., QQQ  | Overweight / Neutral / Underweight | ... |
-| e.g., GOOGL | ... | ... |
+| Instrument | Signal | Entry Zone | Trigger条件 | Stop | Rationale |
+|:-----------|:-------|:-----------|:------------|:-----|:----------|
+| e.g., NVDA | Buy on Dip | $200–$210 | EMA20站稳+缩量+POC上方 | $185 | One-line tied to dominant narrative |
+| e.g., QQQ  | Neutral | — | — | — | ... |
+
+For each "Buy on Dip" or "Buy Now" instrument, add a brief trigger block immediately below the table row:
+
+> **[TICKER] 入场触发（满足以下3条以上才执行）：**
+> - 周线：[周线排列状态 from weekly data — 多头/空头/混合]
+> - 日线：价格站上EMA20（$[ema20_value]）且MA20斜率为正（[ma20_slope_pos]）
+> - 量能：回调量比 < 0.7 或突破量比 > 1.5（近5日量比：[vol_5d_ratios]）
+> - 筹码：当前价[price] [above/below] POC $[poc]
+> - 止损：$[low_10d]（10日最低价）下方0.5×ATR
 
 Rules:
 - Derive every stance from the development analysis above — no new information here.
-- If a stock has a pending binary catalyst (earnings, product launch), show Bull / Bear scenario instead of a single stance.
-- Keep rationale to one line.
+- If a stock has a pending binary catalyst (earnings, product launch), show Bull / Bear scenario instead of a single stance and skip the trigger block.
+- Entry Zone must be tied to a specific technical level (EMA20, MA60, POC, Bollinger Lower) — never a vague range.
+- Stop must use low_10d from the data as the primary anchor.
 
 ---
 

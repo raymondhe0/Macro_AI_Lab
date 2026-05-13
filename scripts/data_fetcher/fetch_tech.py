@@ -14,6 +14,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import yfinance as yf
 from stockstats import wrap as ss_wrap
 
@@ -21,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from lib.search import serper_search, fetch_article_text, last_24h_tbs, last_nhours_tbs
 from lib.sources import is_trusted_source
-from lib.stock_data import fetch_yfinance_news
+from lib.stock_data import fetch_yfinance_news, _compute_volume_profile, _fetch_weekly_summary
 from lib.raw_store import save_raw
 from lib.watchlist import ticker_universe_for_fetcher
 
@@ -176,7 +177,48 @@ def fetch_tech_stock_data() -> list[dict]:
 
             ma_20  = round(float(hist["Close"].rolling(20).mean().iloc[-1]), 2)
             ma_50  = round(float(hist["Close"].rolling(50).mean().iloc[-1]), 2)
-            ma_200 = round(float(hist["Close"].rolling(200).mean().iloc[-1]), 2)
+            ma_60_raw  = hist["Close"].rolling(60).mean().iloc[-1]
+            ma_120_raw = hist["Close"].rolling(120).mean().iloc[-1]
+            ma_200_raw = hist["Close"].rolling(200).mean().iloc[-1]
+            import math as _math
+            ma_60  = round(float(ma_60_raw),  2) if not _math.isnan(ma_60_raw)  else None
+            ma_120 = round(float(ma_120_raw), 2) if not _math.isnan(ma_120_raw) else None
+            ma_200 = round(float(ma_200_raw), 2) if not _math.isnan(ma_200_raw) else None
+
+            # EMA (Lei's fast trigger line)
+            ema_20  = round(float(hist["Close"].ewm(span=20,  adjust=False).mean().iloc[-1]), 2)
+            ema_60  = round(float(hist["Close"].ewm(span=60,  adjust=False).mean().iloc[-1]), 2)
+            ema_120 = round(float(hist["Close"].ewm(span=120, adjust=False).mean().iloc[-1]), 2)
+
+            # 抵扣价斜率
+            cs = hist["Close"]
+            ma20_slope  = bool(cs.iloc[-1] > cs.iloc[-21])  if len(cs) >= 21  else None
+            ma60_slope  = bool(cs.iloc[-1] > cs.iloc[-61])  if len(cs) >= 61  else None
+            ma120_slope = bool(cs.iloc[-1] > cs.iloc[-121]) if len(cs) >= 121 else None
+
+            # 均线排列
+            _mas = [v for v in [ma_20, ma_60, ma_120] if v is not None]
+            bullish_align = len(_mas) == 3 and price > ma_20 > ma_60 > ma_120
+            bearish_align = len(_mas) == 3 and price < ma_20 < ma_60 < ma_120
+            alignment = ("bullish" if bullish_align else "bearish" if bearish_align else "mixed")
+            ma_spread = ((max(_mas) - min(_mas)) / min(_mas) * 100) if len(_mas) >= 2 else None
+            ma_dense  = ma_spread is not None and ma_spread < 2.0
+
+            # Volume & stop
+            vol_today  = round(float(hist["Volume"].iloc[-1]), 0)
+            vol_avg_20 = round(float(hist["Volume"].rolling(20).mean().iloc[-1]), 0)
+            vol_ratio  = round(vol_today / vol_avg_20, 2) if vol_avg_20 > 0 else None
+            vol_5d_ratios = (
+                [round(float(v) / vol_avg_20, 2) for v in hist["Volume"].iloc[-5:]]
+                if vol_avg_20 > 0 and len(hist) >= 5 else []
+            )
+            low_10d = round(float(hist["Low"].iloc[-10:].min()), 2) if len(hist) >= 10 else None
+
+            # Volume Profile POC
+            poc, vah, val_area = _compute_volume_profile(hist)
+
+            # Weekly context
+            w = _fetch_weekly_summary(hist)
 
             hist_r = hist.reset_index()
             hist_r.columns = [c.lower() for c in hist_r.columns]
@@ -189,24 +231,50 @@ def fetch_tech_stock_data() -> list[dict]:
             records.append({
                 "ticker":      ticker,
                 "description": description,
-                # ── Price & technicals ──
+                # ── Price ──
                 "price":             price,
                 "prev_close":        prev,
                 "change_1d_pct":     chg_1d,
                 "high_52w":          high_52w,
                 "low_52w":           low_52w,
                 "pct_off_52w_high":  round((price / high_52w - 1) * 100, 2),
-                "price_pct_52w_range": pct_52w,   # 0.91 = in top 9% of 52w range
+                "price_pct_52w_range": pct_52w,
                 "price_pct_2y_range":  pct_2y,
+                # ── Moving averages ──
                 "ma_20":   ma_20,
                 "ma_50":   ma_50,
+                "ma_60":   ma_60,
+                "ma_120":  ma_120,
                 "ma_200":  ma_200,
+                "ema_20":  ema_20,
+                "ema_60":  ema_60,
+                "ema_120": ema_120,
                 "vs_ma50_pct":  round((price / ma_50 - 1) * 100, 2),
-                "vs_ma200_pct": round((price / ma_200 - 1) * 100, 2),
+                "vs_ma200_pct": round((price / ma_200 - 1) * 100, 2) if ma_200 else None,
+                "above_ma50":   price > ma_50,
+                "above_ma200":  ma_200 is not None and price > ma_200,
+                # ── Lei system ──
+                "ma20_slope_pos":  ma20_slope,
+                "ma60_slope_pos":  ma60_slope,
+                "ma120_slope_pos": ma120_slope,
+                "alignment":       alignment,
+                "ma_dense_zone":   ma_dense,
+                "ma_spread_pct":   round(ma_spread, 1) if ma_spread is not None else None,
+                # ── Volume ──
+                "vol_today":    int(vol_today),
+                "vol_avg_20":   int(vol_avg_20),
+                "vol_ratio":    vol_ratio,
+                "vol_5d_ratios": vol_5d_ratios,
+                "low_10d":      low_10d,
+                # ── Volume Profile ──
+                "poc":  poc,
+                "vah":  vah,
+                "val":  val_area,
+                # ── Weekly context ──
+                "weekly": w,
+                # ── Momentum ──
                 "rsi_14":  rsi,
                 "atr_14":  atr,
-                "above_ma50":  price > ma_50,
-                "above_ma200": price > ma_200,
                 # ── Fundamentals ──
                 **fundamentals,
             })

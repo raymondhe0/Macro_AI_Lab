@@ -200,12 +200,14 @@ def build_user_message(
     macro = all_raw.get("macro")
     if macro:
         lines += ["=" * 60,
-                  "SECTION B — MACRO: PRICES, RATES, EARNINGS (raw from Finnhub/FRED)",
+                  "SECTION B — MACRO: PRICES, RATES, BREADTH, EARNINGS (raw from Finnhub/FRED/Yahoo)",
                   "=" * 60,
                   "── PRICES: ETF SPOT PRICES (Finnhub) ──",
                   macro.get("prices_md", ""), "",
                   "── RATES: YIELD CURVE & FED FUNDS RATE (FRED) ──",
                   macro.get("rates_md", ""), "",
+                  "── MARKET BREADTH (ETF MA structure + RSP÷SPY quality; all above 200d=bull, RSP÷SPY falling=narrow rally) ──",
+                  macro.get("breadth_md", "N/A"), "",
                   "── EARNINGS: MAJOR EARNINGS THIS WEEK (Finnhub) ──",
                   macro.get("earnings_md", ""), ""]
         lines += ["=" * 60, "SECTION B2 — MACRO NEWS (raw articles, unfiltered by LLM)", "=" * 60]

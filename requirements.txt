@@ -7,10 +7,12 @@ anthropic>=0.88.0
 
 # HTTP / APIs
 requests>=2.33.1
+beautifulsoup4>=4.14.3
 
 # Financial data
 yfinance>=1.2.0
 stockstats>=0.6.0
+numpy>=1.25.2
 
 # Article extraction (optional but recommended — falls back to regex without it)
 trafilatura>=2.0.0
@@ -24,3 +26,6 @@ PyYAML>=6.0.2
 
 # Environment
 python-dotenv>=1.2.2
+
+# Testing
+pytest>=9.0.3

@@ -35,19 +35,28 @@ log = logging.getLogger(__name__)
 def _format_tech_stocks(tech_stocks: list[dict]) -> str:
     if not tech_stocks:
         return "No tech stock data available."
-    header = ("| Ticker | Description | Price | 1D% | RSI(14) | ATR(14) "
-              "| vs MA50% | vs MA200% | % off 52W High |")
-    sep    = ("|:-------|:------------|------:|----:|--------:|--------:"
-              "|---------:|----------:|---------------:|")
+    header = ("| Ticker | Price | 1D% | RSI | ATR | 均线排列 | vs EMA20% | vs MA60% | vs MA200% | POC | 周线 | 5日量比 |")
+    sep    = ("|:-------|------:|----:|----:|----:|:---------|----------:|---------:|----------:|----:|:-----|:-------|")
     rows = []
     for s in tech_stocks:
-        trend = "▲" if s["above_ma50"] else "▼"
+        align_short = {"bullish": "多头✅", "bearish": "空头⚠️", "mixed": "混合"}.get(
+            s.get("alignment", "mixed"), "混合")
+        vs_ema20 = round((s["price"] / s["ema_20"] - 1) * 100, 1) if s.get("ema_20") else 0
+        vs_ma60  = round((s["price"] / s["ma_60"]  - 1) * 100, 1) if s.get("ma_60")  else 0
+        vs_ma200 = s.get("vs_ma200_pct") or 0
+        poc      = s.get("poc")
+        w        = s.get("weekly") or {}
+        w_str    = w.get("w_alignment", "N/A") if w else "N/A"
+        vols     = s.get("vol_5d_ratios", [])
+        vol_str  = ",".join(str(v) for v in vols[-3:]) if vols else "N/A"
         rows.append(
-            f"| {s['ticker']:<5} | {s['description']:<42} "
+            f"| {s['ticker']:<5} "
             f"| ${s['price']:>8.2f} | {s['change_1d_pct']:>+5.2f}% "
-            f"| {s['rsi_14']:>5.1f} | {s['atr_14']:>6.2f} "
-            f"| {s['vs_ma50_pct']:>+7.1f}%{trend} | {s['vs_ma200_pct']:>+8.1f}% "
-            f"| {s['pct_off_52w_high']:>+13.1f}% |"
+            f"| {s['rsi_14']:>4.0f} | {s['atr_14']:>5.2f} "
+            f"| {align_short:<8} "
+            f"| {vs_ema20:>+8.1f}% | {vs_ma60:>+7.1f}% | {vs_ma200:>+8.1f}% "
+            f"| {'${:.0f}'.format(poc) if poc else 'N/A'} "
+            f"| {w_str:<8} | {vol_str} |"
         )
     return "\n".join([header, sep] + rows)
 
@@ -97,14 +106,27 @@ def build_user_message(data: dict, prev_report: str | None, macro_regime: str | 
 
     # Surface raw numbers for the LLM to reason about directly
     if tech_stocks:
-        lines += ["Raw data per stock (JSON):"]
+        lines += ["Raw data per stock (extended — includes Lei trading system fields):"]
         for s in tech_stocks:
+            w = s.get("weekly") or {}
             lines.append(
-                f"  {s['ticker']}: price={s['price']}, rsi={s['rsi_14']}, "
-                f"ma50={s['ma_50']}, ma200={s['ma_200']}, "
-                f"atr={s['atr_14']}, high_52w={s['high_52w']}, low_52w={s['low_52w']}, "
-                f"vs_ma50={s['vs_ma50_pct']}%, vs_ma200={s['vs_ma200_pct']}%, "
-                f"pct_off_52w_high={s['pct_off_52w_high']}%"
+                f"  {s['ticker']}: price={s['price']}, rsi={s['rsi_14']}, atr={s['atr_14']}"
+                f"\n    MAs: ma20={s['ma_20']}, ma50={s['ma_50']}, ma60={s.get('ma_60')}, "
+                f"ma120={s.get('ma_120')}, ma200={s.get('ma_200')}"
+                f"\n    EMAs: ema20={s.get('ema_20')}, ema60={s.get('ema_60')}"
+                f"\n    Alignment: {s.get('alignment')} | dense_zone={s.get('ma_dense_zone')} "
+                f"(spread={s.get('ma_spread_pct')}%)"
+                f"\n    Slopes (抵扣价): ma20={s.get('ma20_slope_pos')}, "
+                f"ma60={s.get('ma60_slope_pos')}, ma120={s.get('ma120_slope_pos')}"
+                f"\n    Volume: today={s.get('vol_today')}, avg20={s.get('vol_avg_20')}, "
+                f"ratio={s.get('vol_ratio')} | 5d_ratios={s.get('vol_5d_ratios')}"
+                f"\n    POC={s.get('poc')}, VAH={s.get('vah')}, VAL={s.get('val')}"
+                f"\n    Stop ref (10d low)={s.get('low_10d')}"
+                f"\n    Weekly: {w.get('w_alignment')} | w_ma20={w.get('w_ma20')}, "
+                f"w_ma60={w.get('w_ma60')} | slopes: ma20={w.get('w_ma20_slope_pos')}, "
+                f"ma60={w.get('w_ma60_slope_pos')}"
+                f"\n    52w: high={s['high_52w']}, low={s['low_52w']}, "
+                f"pct_off_high={s['pct_off_52w_high']}%"
             )
         lines.append("")
 

@@ -36,6 +36,11 @@ Read the raw data sections in the user message and fill in this table exactly:
 - Dominant driver: [one sentence]
 - Conviction: High / Medium / Low
 
+**Market Breadth** (from Section B — ETF MA structure + RSP÷SPY quality; use to calibrate deployment level):
+- Bull/bear environment: [X/5 ETFs above 200d MA] → [bull / bear]
+- Breadth quality: RSP÷SPY 20d change [+X% / −X%] → [broad participation / narrow leadership]
+- Note: all 5 ETFs above 200d + RSP÷SPY rising = broad bull, max deployment; RSP÷SPY falling in rally = narrow leadership top risk, trim "Buy Now" urgency; small-cap (IWM) lagging = caution on cyclicals
+
 **Trading Signals** (from Section E-INTRADAY / E-WEEKLY — NQ & GC technical levels and news):
 - Nasdaq (NQ / QQQ) bias: Bullish / Bearish / Neutral · Conviction: High / Medium / Low
 - Gold (GC / GLD) bias: Bullish / Bearish / Neutral · Conviction: High / Medium / Low
@@ -110,14 +115,14 @@ Produce the unified allocation. Every row must be traceable to Steps 1–3.
 
 Create one row for every instrument listed in Section A's price table (ETFs first, then stocks in the order they appear), then add a Cash row last.
 
-| Instrument | Type | Allocation | Signal | Conviction | Entry Zone | Stop | Rationale |
-|:-----------|:-----|:----------:|:------:|:----------:|:----------:|:----:|:----------|
-| QQQ | ETF | X% | Buy Now / Dip / Wait / Hold / ⚠️ Conflicted | H/M/L | $xxx–$xxx | $xxx | One-line |
-| VOO | ETF | X% | | | | | |
-| GLD | ETF | X% | | | | | |
-| TLT | ETF | X% | | | | | |
-| [one row per stock in Section A] | Stock | X% | | | | | |
-| Cash | — | X% | — | — | — | — | Regime buffer |
+| Instrument | Type | Allocation | Signal | Conviction | Entry Zone | Trigger | Stop | Rationale |
+|:-----------|:-----|:----------:|:------:|:----------:|:----------:|:--------|:----:|:----------|
+| QQQ | ETF | X% | Buy Now / Dip / Wait / Hold / ⚠️ Conflicted | H/M/L | $xxx–$xxx | EMA20站稳+量比确认 | $xxx | One-line |
+| VOO | ETF | X% | | | | | | |
+| GLD | ETF | X% | | | | | | |
+| TLT | ETF | X% | | | | | | |
+| [one row per stock in Section A] | Stock | X% | | | | | | |
+| Cash | — | X% | — | — | — | — | — | Regime buffer |
 
 **Allocation rules (verify before outputting):**
 - All rows sum to exactly 100% ✓

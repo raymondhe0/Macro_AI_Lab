@@ -4,10 +4,86 @@ import logging
 import math
 from datetime import datetime
 
+import numpy as np
 import yfinance as yf
 from stockstats import wrap as ss_wrap
 
 log = logging.getLogger(__name__)
+
+
+def _compute_volume_profile(hist, n_bins: int = 200) -> tuple[float, float, float]:
+    """Approximate Volume Profile from OHLCV history.
+
+    Returns (poc_price, value_area_high, value_area_low).
+    Uses the last 250 trading days and distributes each day's volume
+    proportionally across its high-low range (Lei's 筹码分布 logic).
+    """
+    hist_vp = hist.iloc[-250:] if len(hist) >= 250 else hist
+    p_min = float(hist_vp["Low"].min())
+    p_max = float(hist_vp["High"].max())
+    if p_max <= p_min:
+        mid = (p_max + p_min) / 2
+        return round(mid, 2), round(p_max, 2), round(p_min, 2)
+
+    bins = np.linspace(p_min, p_max, n_bins + 1)
+    vol_profile = np.zeros(n_bins)
+    for _, row in hist_vp.iterrows():
+        lo, hi, vol = float(row["Low"]), float(row["High"]), float(row["Volume"])
+        day_range = hi - lo
+        lo_idx = max(0, int(np.searchsorted(bins, lo, side="left")) - 1)
+        hi_idx = min(n_bins - 1, int(np.searchsorted(bins, hi, side="right")) - 1)
+        for j in range(lo_idx, hi_idx + 1):
+            overlap = min(bins[j + 1], hi) - max(bins[j], lo)
+            if overlap > 0:
+                vol_profile[j] += vol * (overlap / day_range) if day_range > 0 else vol
+
+    poc_idx = int(np.argmax(vol_profile))
+    poc = round(float((bins[poc_idx] + bins[poc_idx + 1]) / 2), 2)
+
+    total_vol = vol_profile.sum()
+    order = np.argsort(vol_profile)[::-1]
+    acc, va_bins = 0.0, []
+    for idx in order:
+        va_bins.append(int(idx))
+        acc += vol_profile[idx]
+        if acc >= 0.70 * total_vol:
+            break
+    vah = round(float(bins[max(va_bins) + 1]), 2)
+    val = round(float(bins[min(va_bins)]), 2)
+    return poc, vah, val
+
+
+def _fetch_weekly_summary(hist) -> dict | None:
+    """Compute weekly MA20/MA60 and slope flags from daily history."""
+    try:
+        w = hist["Close"].resample("W-FRI").last().dropna()
+        if len(w) < 21:
+            return None
+        w_price = float(w.iloc[-1])
+        w_ma20_raw = w.rolling(20).mean().iloc[-1]
+        w_ma20 = round(float(w_ma20_raw), 2) if not math.isnan(w_ma20_raw) else None
+        w_ma60_raw = w.rolling(60).mean().iloc[-1] if len(w) >= 60 else float("nan")
+        w_ma60 = round(float(w_ma60_raw), 2) if not math.isnan(w_ma60_raw) else None
+        w_ma20_slope = bool(w.iloc[-1] > w.iloc[-21]) if len(w) >= 21 else None
+        w_ma60_slope = bool(w.iloc[-1] > w.iloc[-61]) if len(w) >= 61 else None
+        if w_ma60 is not None:
+            w_align = ("多头排列" if w_price > w_ma20 > w_ma60
+                       else "空头排列" if w_price < w_ma20 < w_ma60
+                       else "混合")
+        else:
+            w_align = "多头" if w_ma20 and w_price > w_ma20 else "空头" if w_ma20 else "N/A"
+        return {
+            "w_price":             round(w_price, 2),
+            "w_ma20":              w_ma20,
+            "w_ma60":              w_ma60,
+            "w_ma20_slope_pos":    w_ma20_slope,
+            "w_ma60_slope_pos":    w_ma60_slope,
+            "w_above_ma20":        w_ma20 is not None and w_price > w_ma20,
+            "w_alignment":         w_align,
+        }
+    except Exception as exc:
+        log.debug("Weekly summary failed: %s", exc)
+        return None
 
 
 def fetch_stock_data(ticker: str) -> str:
@@ -15,7 +91,7 @@ def fetch_stock_data(ticker: str) -> str:
     try:
         t    = yf.Ticker(ticker)
         info = t.info or {}
-        hist = t.history(period="1y", interval="1d")
+        hist = t.history(period="2y", interval="1d")
 
         if hist.empty or len(hist) < 20:
             return f"{ticker}: insufficient historical data from yfinance."
@@ -35,6 +111,49 @@ def fetch_stock_data(ticker: str) -> str:
         ma50  = float(hist["Close"].rolling(50).mean().iloc[-1])
         ma200_raw = hist["Close"].rolling(200).mean().iloc[-1]
         ma200 = float(ma200_raw) if not math.isnan(ma200_raw) else None
+
+        ma60_raw  = hist["Close"].rolling(60).mean().iloc[-1]
+        ma120_raw = hist["Close"].rolling(120).mean().iloc[-1]
+        ma60  = float(ma60_raw)  if not math.isnan(ma60_raw)  else None
+        ma120 = float(ma120_raw) if not math.isnan(ma120_raw) else None
+
+        # ── EMA (Lei's system: EMA is the fast "trigger" line) ────────────────
+        ema20  = round(float(hist["Close"].ewm(span=20,  adjust=False).mean().iloc[-1]), 2)
+        ema60  = round(float(hist["Close"].ewm(span=60,  adjust=False).mean().iloc[-1]), 2)
+        ema120 = round(float(hist["Close"].ewm(span=120, adjust=False).mean().iloc[-1]), 2)
+
+        # ── 抵扣价斜率 (Lei's slope logic: price today vs. price N days ago) ──
+        cs = hist["Close"]
+        ma20_slope_pos  = bool(cs.iloc[-1] > cs.iloc[-21])  if len(cs) >= 21  else None
+        ma60_slope_pos  = bool(cs.iloc[-1] > cs.iloc[-61])  if len(cs) >= 61  else None
+        ma120_slope_pos = bool(cs.iloc[-1] > cs.iloc[-121]) if len(cs) >= 121 else None
+
+        # ── 均线排列 & 密集区 ─────────────────────────────────────────────────
+        _ma_set = [v for v in [ma20, ma60, ma120] if v is not None]
+        bullish_align = len(_ma_set) == 3 and current > ma20 > ma60 > ma120
+        bearish_align = len(_ma_set) == 3 and current < ma20 < ma60 < ma120
+        alignment_str = ("多头排列 ✅" if bullish_align
+                         else "空头排列 ⚠️" if bearish_align
+                         else "混合/过渡")
+        ma_spread_pct = ((max(_ma_set) - min(_ma_set)) / min(_ma_set) * 100
+                         if len(_ma_set) >= 2 else None)
+        ma_dense = ma_spread_pct is not None and ma_spread_pct < 2.0
+
+        # ── 10日最低价 (stop-loss reference per Lei) ──────────────────────────
+        low_10d = round(float(hist["Low"].iloc[-10:].min()), 2) if len(hist) >= 10 else None
+
+        # ── 5日量比 (recent volume pattern) ──────────────────────────────────
+        vol_5d_ratios: list[float] = []
+        if vol_avg20 > 0 and len(hist) >= 5:
+            vol_5d_ratios = [round(float(v) / vol_avg20, 2)
+                             for v in hist["Volume"].iloc[-5:]]
+
+        # ── 周线摘要 (weekly context) ─────────────────────────────────────────
+        w_summary = _fetch_weekly_summary(hist)
+
+        # ── Volume Profile / 筹码分布 ─────────────────────────────────────────
+        poc, vah, val = _compute_volume_profile(hist)
+        poc_vs_price = round((current / poc - 1) * 100, 1) if poc else None
 
         # ── Momentum / volatility via stockstats ──────────────────────────────
         hist_r = hist.reset_index()
@@ -153,7 +272,11 @@ def fetch_stock_data(ticker: str) -> str:
             "|:------------------------|:------------------------|:---------------------|",
             f"| 20-Day MA               | ${ma20:.2f}              | {_trend_vs_ma(current, ma20, 'MA20')} |",
             f"| 50-Day MA               | ${ma50:.2f}              | {_trend_vs_ma(current, ma50, 'MA50')} |",
+            f"| 60-Day MA               | {'${:.2f}'.format(ma60) if ma60 else 'N/A'} | {_trend_vs_ma(current, ma60, 'MA60')} |",
+            f"| 120-Day MA              | {'${:.2f}'.format(ma120) if ma120 else 'N/A'} | {_trend_vs_ma(current, ma120, 'MA120')} |",
             f"| 200-Day MA              | {'${:.2f}'.format(ma200) if ma200 else 'N/A'} | {_trend_vs_ma(current, ma200, 'MA200')} |",
+            f"| EMA20                   | ${ema20:.2f}              | {_trend_vs_ma(current, ema20, 'EMA20')} |",
+            f"| EMA60                   | ${ema60:.2f}              | {_trend_vs_ma(current, ema60, 'EMA60')} |",
             f"| RSI(14)                 | {rsi:.1f}                 | {rsi_note}           |",
             f"| ATR(14)                 | ${atr:.2f}               | Daily volatility proxy |",
             f"| MACD                    | {macd:.4f}               | {macd_note}          |",
@@ -161,6 +284,28 @@ def fetch_stock_data(ticker: str) -> str:
             f"| Bollinger Lower Band    | ${boll_lb:.2f}           |                      |",
             "",
             f"**Trend Summary:** {trend_notes}",
+            "",
+            "**Lei Trading System — Entry Signals**\n",
+            "| Indicator               | Value                   | Signal               |",
+            "|:------------------------|:------------------------|:---------------------|",
+            f"| 均线排列                | {alignment_str}         |                      |",
+            f"| MA20 斜率 (抵扣价)      | {'今日>20日前 ✅' if ma20_slope_pos else '今日<20日前 ⚠️' if ma20_slope_pos is not None else 'N/A'} | {'MA20向上' if ma20_slope_pos else 'MA20向下'} |",
+            f"| MA60 斜率 (抵扣价)      | {'今日>60日前 ✅' if ma60_slope_pos else '今日<60日前 ⚠️' if ma60_slope_pos is not None else 'N/A'} | {'MA60向上' if ma60_slope_pos else 'MA60向下'} |",
+            f"| MA120 斜率 (抵扣价)     | {'今日>120日前 ✅' if ma120_slope_pos else '今日<120日前 ⚠️' if ma120_slope_pos is not None else 'N/A'} | {'MA120向上' if ma120_slope_pos else 'MA120向下'} |",
+            f"| 密集区?                 | {'是 ⚠️ 趋势不明' if ma_dense else f'否 (间距{ma_spread_pct:.1f}%)'} |  |",
+            f"| POC 筹码主峰            | ${poc:.2f}               | 价格{'站上' if poc_vs_price and poc_vs_price > 0 else '跌破'} POC {f'{poc_vs_price:+.1f}%' if poc_vs_price is not None else ''} |",
+            f"| 价值区间 VAH/VAL        | ${vah:.2f} / ${val:.2f}  | 成交量70%集中区间    |",
+            f"| 10日最低价 (止损参考)   | {'${:.2f}'.format(low_10d) if low_10d else 'N/A'} |                      |",
+            f"| 近5日量比               | {', '.join(str(r) for r in vol_5d_ratios) if vol_5d_ratios else 'N/A'} | <0.7=缩量 >1.5=放量  |",
+            "",
+            "**周线状态 (Weekly Context)**\n",
+            *(["| 指标 | 数值 | 信号 |",
+               "|:-----|-----:|:-----|",
+               f"| 周MA20 | ${w_summary['w_ma20']:.2f} | {'价格站上 ✅' if w_summary['w_above_ma20'] else '价格跌破 ⚠️'} |",
+               f"| 周MA60 | {'${:.2f}'.format(w_summary['w_ma60']) if w_summary['w_ma60'] else 'N/A'} | |",
+               f"| 周MA20斜率 | {'正 ✅' if w_summary['w_ma20_slope_pos'] else '负 ⚠️'} | 周线大势方向 |",
+               f"| 周线排列 | {w_summary['w_alignment']} | |"]
+             if w_summary else ["周线数据不足 (需更长历史)"]),
         ]
         return "\n".join(lines)
 

@@ -39,6 +39,12 @@ def build_user_message(data: dict, prev_report: str | None) -> str:
               data.get("prices_md", "N/A"), ""]
     lines += ["=" * 60, "SECTION A2 — YIELD CURVE & FED FUNDS RATE (FRED)", "=" * 60,
               data.get("rates_md", "N/A"), ""]
+    lines += ["=" * 60,
+              "SECTION A3 — MARKET BREADTH (ETF MA structure + RSP÷SPY breadth quality)",
+              "Use: all ETFs above 200d MA = bull env; RSP÷SPY rising = broad participation; "
+              "RSP÷SPY falling = narrow leadership (top risk in extended rallies)",
+              "=" * 60,
+              data.get("breadth_md", "N/A"), ""]
     lines += ["=" * 60, "SECTION B — MAJOR EARNINGS THIS WEEK (Finnhub)", "=" * 60,
               data.get("earnings_md", "N/A"), ""]
 

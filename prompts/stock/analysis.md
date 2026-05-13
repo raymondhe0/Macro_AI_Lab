@@ -131,11 +131,40 @@ This is a tactical position. Entry is driven by technical levels. Profit-taking 
 | Position Size Guidance | Full / Half / Quarter — based on conviction level   |
 | Invalidation Level     | The closing price that definitively kills the medium-term thesis |
 
-**Entry Rationale:** Which technical level (MA, Bollinger band, prior swing low) defines the entry zone and why?
+**Entry Rationale:** Which technical level (MA, Bollinger band, prior swing low, POC) defines the entry zone and why?
 
-**Stop Rationale:** Which structural level defines the stop? How many ATR(14) units below entry is it?
+**Stop Rationale:** Which structural level defines the stop? Reference the 10-day low (provided in data) as the primary stop anchor, then note how many ATR(14) units below entry it sits.
 
 **Profit-Taking Plan:** At T1, take partial profits (suggested: 50%) and trail the stop to breakeven. At T2, take remaining position off or reduce to a long-term core position (carry into Step 4B).
+
+---
+
+**Entry Confirmation Checklist** (complete this after the table for every "Buy Now" or "Buy on Dip" verdict)
+
+Once price enters the Entry Zone, the investor should only execute if **at least 4 of the following 8 conditions are met**. Mark each ✅ (met) or ☐ (not yet met) using the data provided:
+
+*周线级别 — Large-trend gate (must pass at least 1):*
+- ☐ 周线MA20斜率为正：当周收盘 > 20周前收盘（weekly w_ma20_slope_pos = True）
+- ☐ 周线多头排列：weekly alignment = "多头排列"（price > w_ma20 > w_ma60）
+
+*日线级别 — Entry timing (pass at least 2):*
+- ☐ 价格站上EMA20：current price > ema20（EMA是最灵敏的入场发令枪）
+- ☐ MA20抵扣价确认：ma20_slope_pos = True（今日收盘 > 20日前收盘，MA20斜率转正）
+- ☐ 价格位于MA120上方：price > ma_120（长期趋势完好）
+- ☐ 均线未进入密集区：ma_dense_zone = False（均线间距 > 2%，趋势方向清晰）
+
+*量能确认 (pass at least 1):*
+- ☐ 回调缩量：进入区间当日量比 < 0.7（vol_ratio < 0.7，主力未出货）
+- ☐ 突破放量：确认入场日量比 > 1.5（vol_ratio > 1.5，资金承接）
+
+*筹码位置 (pass at least 1):*
+- ☐ 价格站在POC之上：price > poc（站在筹码大山之上，阻力最小）
+
+**止损执行规则：**
+- 主止损位 = 10日最低价（low_10d）下方0.5×ATR处
+- 追加退出条件：若价格重新跌破所有均线（EMA20、MA20、MA60全部跌破）→ 不等止损价直接出
+
+Fill in the actual numbers from the data for each condition. Do not leave conditions abstract — every ✅/☐ must cite a specific value.
 
 ---
 
