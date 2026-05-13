@@ -1,0 +1,15 @@
+SHELL=/bin/bash
+
+# ── Step 1: Fetchers — daily at 5:00 PM PDT (00:00 UTC) ──
+0 0 * * * cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/data_fetcher/fetch_macro.py >> /home/raymondhe85/logs/fetcher.log 2>&1
+0 0 * * * cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/data_fetcher/fetch_tech.py >> /home/raymondhe85/logs/fetcher.log 2>&1
+0 0 * * * cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/data_fetcher/fetch_stock.py --ticker NVDA GOOGL MSFT TSM META AMD AMZN >> /home/raymondhe85/logs/fetcher.log 2>&1
+
+# ── Step 2a: Tech analyst — daily at 5:30 PM PDT (00:30 UTC) ──
+30 0 * * * cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/analyst/tech_analyst.py >> /home/raymondhe85/logs/tech.log 2>&1
+
+# ── Step 2b: Macro analyst — every 2 days at 5:30 PM PDT (00:30 UTC) ──
+30 0 */2 * * cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/analyst/macro_analyst.py >> /home/raymondhe85/logs/macro.log 2>&1
+
+# ── Step 3: Portfolio analyst — every Sunday at 6:00 PM PDT (01:00 UTC) ──
+0 1 * * 0 cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/analyst/portfolio_analyst.py >> /home/raymondhe85/logs/portfolio.log 2>&1
