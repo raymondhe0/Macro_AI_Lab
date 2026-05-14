@@ -42,6 +42,8 @@ HARD RULE: Only produce a full analysis for developments scored 7 or higher.
 If nothing clears 7, output exactly one line:
   "No material AI/tech developments today; sector operating in steady state."
 
+DATE RULE: Every article has a "Date:" field. Always cite the exact article date when referencing a price move or event — never use relative terms like "yesterday" or "today" unless the article date matches today's date in the user message. If the article is more than 24 hours old, flag it explicitly: e.g., "AMD surged +11% on [date] — this is a prior move, not today's catalyst."
+
 ════════════════════════════════════════
 STEP 2 — DEVELOPMENT ANALYSIS (one block per qualifying development)
 ════════════════════════════════════════

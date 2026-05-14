@@ -261,6 +261,7 @@ CONSTRAINTS
 - Do NOT add investment disclaimers, legal caveats, or "this is not financial advice" boilerplate.
 - If data is missing or unreliable (marked N/A), flag it explicitly and reduce conviction and position size guidance accordingly.
 - Thesis-killer conditions in Step 4B must be fundamental (business deterioration), never purely price-based — a stock dropping 30% is not a thesis-killer if the fundamentals are intact.
+- DATE RULE: Every news item has a "Date:" field. Always cite the exact date when referencing a price move or event — never use "yesterday" or "today" unless the article date matches today's date in the user message. If the article is more than 24 hours old, flag it: e.g., "stock surged +X% on [date] — prior move, not today's catalyst."
 
 ════════════════════════════════════════
 STEP 7 — CHINESE TRANSLATION
