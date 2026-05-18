@@ -135,17 +135,29 @@ def _parse_bilingual(response: str) -> tuple[str, str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Stock Analyst")
     parser.add_argument("--test", action="store_true")
+    parser.add_argument("--ticker", metavar="TICKER",
+                        help="Single ticker for ad-hoc analysis (reads stock_<ticker>_DATE.json). "
+                             "Omit to run the daily batch (reads stock_multiple_DATE.json).")
     args = parser.parse_args()
 
     today_str      = datetime.now().strftime("%Y-%m-%d")
     subject_prefix = "[TEST] " if args.test else ""
 
+    # Resolve which raw file to load
+    if args.ticker:
+        raw_key = f"stock_{args.ticker.upper().lower()}"
+    else:
+        raw_key = "stock_multiple"
+
     log.info("=== Stock Analyst %s%s (engine: %s) ===",
              today_str, " (TEST)" if args.test else "", LLM_ENGINE)
 
-    data = load_raw("stock")
+    data = load_raw(raw_key)
     if not data:
-        log.error("No stock raw data for today. Run: python3 data_fetcher/fetch_stock.py --ticker ...")
+        hint = (f"python3 data_fetcher/fetch_stock.py --ticker {args.ticker.upper()}"
+                if args.ticker else
+                "python3 data_fetcher/fetch_stock.py --ticker NVDA GOOGL ...")
+        log.error("No stock raw data for today. Run: %s", hint)
         return
 
     tickers      = data.get("tickers", [])
@@ -173,8 +185,7 @@ def main() -> None:
         response = run_llm(prompt, user_msg, label=f"stock_{tickers_label}")
         log.info("LLM response complete (%d chars)", len(response))
         english, chinese = _parse_bilingual(response)
-        for ticker in tickers:
-            save_report(f"stock_{ticker.lower()}", english)
+        save_report(raw_key, english)
 
     news_items = data.get("news_items", [])
     title_text = f"个股分析报告 — {tickers_label}"

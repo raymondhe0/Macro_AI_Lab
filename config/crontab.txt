@@ -12,4 +12,4 @@ SHELL=/bin/bash
 30 0 */2 * * cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/analyst/macro_analyst.py >> /home/raymondhe85/logs/macro.log 2>&1
 
 # ── Step 3: Portfolio analyst — every Sunday at 6:00 PM PDT (01:00 UTC) ──
-0 1 * * 0 cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/analyst/portfolio_analyst.py >> /home/raymondhe85/logs/portfolio.log 2>&1
+# 0 1 * * 0 cd /home/raymondhe85/Macro_AI_Lab && set -a && source .env && set +a && /home/raymondhe85/Macro_AI_Lab/venv/bin/python3 scripts/analyst/portfolio_analyst.py >> /home/raymondhe85/logs/portfolio.log 2>&1

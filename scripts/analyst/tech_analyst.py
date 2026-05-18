@@ -23,6 +23,7 @@ from lib.report_store import save_report, load_previous_report
 from lib.prompt_loader import PromptLoader
 from lib.raw_store import load_raw
 from lib.watchlist import get_stocks
+from lib.entry_signals import format_entry_section
 
 logging.basicConfig(
     level=logging.INFO,
@@ -129,6 +130,10 @@ def build_user_message(data: dict, prev_report: str | None, macro_regime: str | 
                 f"pct_off_high={s['pct_off_52w_high']}%"
             )
         lines.append("")
+
+    # SECTION X: pre-computed Lei entry signals (deterministic numbers for the LLM)
+    if tech_stocks:
+        lines += ["", format_entry_section(tech_stocks), ""]
 
     lines += ["=" * 60, "SECTION B — NEWS & TECH SECTOR CONTEXT (past 24 hours)", "=" * 60]
     for i, item in enumerate(data.get("news_items", []), 1):

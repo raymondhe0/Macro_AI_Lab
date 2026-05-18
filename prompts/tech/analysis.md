@@ -118,27 +118,82 @@ STEP 3 — DAILY TECH SYNTHESIS (required, appears once after all developments)
 
 **Key Catalysts to Watch:** 2–3 upcoming events (with dates if known) that could reprice the sector — earnings, model announcements, regulatory decisions, or capex updates.
 
-**Recommended Positioning:** 3–5 concrete, actionable stances for a long-only tech investor:
+**Recommended Positioning:** 3–5 concrete, actionable stances for a long-only tech investor.
 
-| Instrument | Signal | Entry Zone | Trigger条件 | Stop | Rationale |
-|:-----------|:-------|:-----------|:------------|:-----|:----------|
-| e.g., NVDA | Buy on Dip | $200–$210 | EMA20站稳+缩量+POC上方 | $185 | One-line tied to dominant narrative |
+First, produce the summary table:
+
+| Instrument | Signal | Entry Zone | Stop | R:R | Rationale |
+|:-----------|:-------|:-----------|:-----|:----|:----------|
+| e.g., NVDA | Buy on Dip | $[ema20 from SECTION X] | $[stop from SECTION X] | [rr_wait]:1 | One-line tied to dominant narrative |
 | e.g., QQQ  | Neutral | — | — | — | ... |
 
-For each "Buy on Dip" or "Buy Now" instrument, add a brief trigger block immediately below the table row:
+Then, for every instrument with signal "Buy Now" or "Buy on Dip", add a full 4-section entry block immediately after the table. Read ALL values directly from SECTION X — do NOT recalculate. The 4-section structure is:
 
-> **[TICKER] 入场触发（满足以下3条以上才执行）：**
-> - 周线：[周线排列状态 from weekly data — 多头/空头/混合]
-> - 日线：价格站上EMA20（$[ema20_value]）且MA20斜率为正（[ma20_slope_pos]）
-> - 量能：回调量比 < 0.7 或突破量比 > 1.5（近5日量比：[vol_5d_ratios]）
-> - 筹码：当前价[price] [above/below] POC $[poc]
-> - 止损：$[low_10d]（10日最低价）下方0.5×ATR
+---
+
+**[TICKER] — Section 1: Lei 9-Condition Checklist (条件满足 [N]/9)**
+
+| # | Condition | Value | Pass? | Why it matters |
+|:--|:----------|:------|:-----:|:---------------|
+| W1 | 周线MA20斜率正 | [w_ma20_slope_pos] | ✅/☐ | Weekly MA20 slope confirms the multi-week accumulation direction — a positive slope means smart money has been buying for ≥20 weeks. |
+| W2 | 周线多头排列 | [w_alignment] | ✅/☐ | Full weekly bullish stack (price>w_ma20>w_ma60) means daily pullbacks are buyable corrections, not trend reversals. |
+| D1 | 价格站上EMA20 | price vs ema20 | ✅/☐ | EMA20 is Lei's fastest trigger line — reclaiming it confirms short-term sellers have been absorbed. |
+| D2 | MA20斜率正 (抵扣价) | ma20_slope_pos | ✅/☐ | Today's close > close 20 days ago means MA20 is rising — recent buyers have improving unrealized gains, a sign of bull control. |
+| D3 | 价格位于MA120上方 | price vs ma120 | ✅/☐ | MA120 (≈6 months) separates medium-term bull from bear. Above = pullbacks find buyers; below = avoid longs. |
+| D4 | 非均线密集区 | ma_dense, spread% | ✅/☐ | MA spread >2% means trend is directional — trend-following works. Dense zone (<2%) = indecision, higher whipsaw risk. |
+| V1 | 回调缩量 vol_ratio < 0.7 | vol_ratio | ✅/☐ | Below-average volume on pullback = institutions not distributing. Low-volume retreat to support = accumulation opportunity. |
+| V2 | 突破放量 vol_ratio > 1.5 | vol_ratio | ✅/☐ | 1.5× average volume on breakout = genuine demand surge. High-volume breakouts have sustained follow-through. |
+| S1 | 价格站上POC | price vs poc | ✅/☐ | POC is the highest-volume price level over the past year. Above POC = majority of recent holders are profitable, low overhead selling pressure. |
+
+**→ Total: [N]/9 — ENTRY VALID ✅ / BELOW THRESHOLD ⚠️**
+
+---
+
+**[TICKER] — Section 2: MA Structure**
+
+Write 2–3 sentences: (1) daily MA stack alignment from SECTION X values, (2) weekly context, (3) POC position and what it implies for near-term path.
+
+---
+
+**[TICKER] — Section 3: R:R Comparison**
+
+Use values EXACTLY from SECTION X:
+
+| Scenario | Entry | Stop | T1 | R:R | Verdict |
+|:---------|------:|-----:|---:|:----|:--------|
+| Buy Now | $[entry_now] | $[stop] | $[t1] | [rr_now]:1 | ✅ or ⚠️ <2:1 |
+| Wait EMA20 | $[entry_wait] | $[stop] | $[t1] | [rr_wait]:1 | ✅ or ⚠️ <2:1 |
+
+State the preferred scenario and why in one sentence.
+
+---
+
+**[TICKER] — Section 4: Operation Plan**
+
+| Parameter | Value |
+|:----------|:------|
+| Buy Signal | Buy Now / Buy on Dip |
+| Entry Zone | $[specific level from SECTION X] |
+| Stop | $[stop] (10d low − 0.5×ATR) |
+| T1 | $[t1] — take 50% profit, trail stop to breakeven |
+| T2 | $[t2] — take remainder or hold core |
+| Position Size | Full/Half/Quarter based on N/9 conditions met |
+| Invalidation | [Specific price or event that kills the thesis] |
+
+> **入场触发（满足以下3条以上才执行）：**
+> - 周线：[w_alignment from SECTION X]
+> - 日线：价格站上EMA20（$[ema20]）且MA20斜率为正（[ma20_slope_pos]）
+> - 量能：vol_ratio < 0.7 回调缩量 或 > 1.5 突破放量（近5日：[vol_5d_ratios]）
+> - 筹码：当前价 [above/below] POC $[poc]
+> - 止损：$[stop]（10d low $[low_10d] − 0.5×ATR $[atr]）
+
+---
 
 Rules:
-- Derive every stance from the development analysis above — no new information here.
-- If a stock has a pending binary catalyst (earnings, product launch), show Bull / Bear scenario instead of a single stance and skip the trigger block.
-- Entry Zone must be tied to a specific technical level (EMA20, MA60, POC, Bollinger Lower) — never a vague range.
-- Stop must use low_10d from the data as the primary anchor.
+- ALL numbers must come verbatim from SECTION X. Do not recalculate or estimate independently.
+- If a stock's conditions_met < 4: replace Sections 3–4 with "Entry not valid — [N]/9 conditions met. Watch for: [which conditions to monitor]."
+- If a stock has a pending binary catalyst (earnings, product launch), show Bull/Bear scenario instead of a single stance and skip Sections 3–4.
+- Neutral or Avoid stocks: summary table row only — no 4-section block.
 
 ---
 

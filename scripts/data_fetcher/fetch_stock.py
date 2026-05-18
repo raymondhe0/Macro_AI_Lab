@@ -203,11 +203,14 @@ def main() -> None:
 
     news_items = gather_news(tickers, test_mode=args.test)
 
-    save_raw("stock", {
+    # Single ticker → stock_<ticker>_DATE.json  (ad-hoc research)
+    # Multiple tickers → stock_multiple_DATE.json  (daily cron batch)
+    raw_key = f"stock_{tickers[0].lower()}" if len(tickers) == 1 else "stock_multiple"
+    save_raw(raw_key, {
         "date":          today_str,
         "tickers":       tickers,
-        "stock_data_md": stock_data_md,   # formatted markdown (price + technicals)
-        "fundamentals":  fundamentals,    # raw numbers per ticker
+        "stock_data_md": stock_data_md,
+        "fundamentals":  fundamentals,
         "earnings_md":   earnings_md,
         "news_items":    news_items,
     })
