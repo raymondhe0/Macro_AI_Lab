@@ -1,8 +1,10 @@
 """LLM inference helpers shared across all pipelines."""
 
 import logging
+import time
 
 import anthropic
+import httpx
 import requests
 
 from .config import (
@@ -12,19 +14,39 @@ from .config import (
 
 log = logging.getLogger(__name__)
 
+_RETRYABLE = (
+    httpx.RemoteProtocolError,
+    httpx.ReadError,
+    httpx.ConnectError,
+    httpx.TimeoutException,
+    anthropic.APIConnectionError,
+    anthropic.APITimeoutError,
+)
+
 
 def run_claude(system: str, user: str, label: str = "") -> str:
     log.info("Claude API call: %s (%s)…", label or "inference", CLAUDE_MODEL)
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    with client.messages.stream(
-        model=CLAUDE_MODEL,
-        max_tokens=32000,
-        thinking={"type": "adaptive"},
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    ) as stream:
-        msg = stream.get_final_message()
-    return "".join(block.text for block in msg.content if block.type == "text")
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with client.messages.stream(
+                model=CLAUDE_MODEL,
+                max_tokens=32000,
+                thinking={"type": "adaptive"},
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            ) as stream:
+                msg = stream.get_final_message()
+            return "".join(block.text for block in msg.content if block.type == "text")
+        except _RETRYABLE as exc:
+            if attempt == max_attempts:
+                log.error("Claude API failed after %d attempts: %s", max_attempts, exc)
+                raise
+            wait = 2 ** attempt
+            log.warning("Claude API network error (attempt %d/%d): %s — retrying in %ds",
+                        attempt, max_attempts, exc, wait)
+            time.sleep(wait)
 
 
 def run_ollama(system: str, user: str, label: str = "") -> str:
