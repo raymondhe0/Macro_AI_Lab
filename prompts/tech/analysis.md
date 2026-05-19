@@ -159,10 +159,10 @@ Write 2–3 sentences: (1) daily MA stack alignment from SECTION X values, (2) w
 
 Use values EXACTLY from SECTION X:
 
-| Scenario | Entry | Stop | T1 | R:R | Verdict |
-|:---------|------:|-----:|---:|:----|:--------|
-| Buy Now | $[entry_now] | $[stop] | $[t1] | [rr_now]:1 | ✅ or ⚠️ <2:1 |
-| Wait EMA20 | $[entry_wait] | $[stop] | $[t1] | [rr_wait]:1 | ✅ or ⚠️ <2:1 |
+| Scenario | Entry | Stop | T1 | T2 | R:R | Verdict |
+|:---------|------:|-----:|---:|---:|:----|:--------|
+| Buy Now | $[entry_now] | $[stop] | $[t1] | $[t2] | [rr_now]:1 | ✅ or ⚠️ <2:1 |
+| Wait EMA20 | $[entry_wait] | $[stop] | $[t1] | $[t2] | [rr_wait]:1 | ✅ or ⚠️ <2:1 |
 
 State the preferred scenario and why in one sentence.
 
@@ -177,7 +177,7 @@ State the preferred scenario and why in one sentence.
 | Stop | $[stop] (10d low − 0.5×ATR) |
 | T1 | $[t1] — take 50% profit, trail stop to breakeven |
 | T2 | $[t2] — take remainder or hold core |
-| Position Size | Full/Half/Quarter based on N/9 conditions met |
+| Position Size | Full (7–9 met) / Half (5–6) / Quarter (4) / No entry (<4) |
 | Invalidation | [Specific price or event that kills the thesis] |
 
 > **入场触发（满足以下3条以上才执行）：**
